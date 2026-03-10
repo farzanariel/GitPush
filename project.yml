@@ -1,0 +1,35 @@
+name: GitPush
+options:
+  bundleIdPrefix: com.farzan
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+
+targets:
+  GitPush:
+    type: application
+    platform: macOS
+    sources:
+      - path: GitPush
+    info:
+      path: GitPush/Info.plist
+      properties:
+        LSUIElement: true
+        CFBundleName: GitPush
+        CFBundleDisplayName: GitPush
+        CFBundleVersion: "1"
+        CFBundleShortVersionString: "1.0"
+        LSMinimumSystemVersion: "14.0"
+    entitlements:
+      path: GitPush/GitPush.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.farzan.GitPush
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.9"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        CODE_SIGN_STYLE: Automatic
+        INFOPLIST_FILE: GitPush/Info.plist
+        GENERATE_INFOPLIST_FILE: false
