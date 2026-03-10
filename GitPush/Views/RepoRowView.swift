@@ -25,7 +25,7 @@ struct RepoRowView: View {
 
     private var mainRow: some View {
         HStack(spacing: 8) {
-            // Tappable area for expand/collapse (everything except the button)
+            // Tappable area for expand/collapse
             HStack(spacing: 8) {
                 statusDot
                     .frame(width: 18, height: 18)
@@ -57,15 +57,12 @@ struct RepoRowView: View {
             .contentShape(Rectangle())
             .onTapGesture {
                 isExpanded.toggle()
-                if isExpanded && repo.commitMessage.isEmpty && appState.autoGenerateCommitMessage {
-                    generateMessage()
-                }
             }
 
-            // Push button — outside the tap gesture area
+            // Quick push button — auto-generates message, commits, pushes
             if !repo.operation.isInProgress {
                 Button {
-                    Task { await commitAndPush() }
+                    Task { await quickCommitAndPush() }
                 } label: {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 16))
@@ -153,38 +150,40 @@ struct RepoRowView: View {
                                     .controlSize(.mini)
                                     .scaleEffect(0.6)
                             } else {
-                                Image(systemName: !appState.hasAPIKey ? "text.badge.star" : "sparkles")
+                                Image(systemName: appState.hasAPIKey ? "sparkles" : "text.badge.star")
                                     .font(.system(size: 9))
                             }
-                            Text(!appState.hasAPIKey ? "Auto" : "Generate")
+                            Text(appState.hasAPIKey ? "Generate" : "Auto")
                                 .font(.caption2)
                         }
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(!appState.hasAPIKey ? Color.secondary : Color.purple)
+                    .foregroundStyle(appState.hasAPIKey ? Color.purple : Color.secondary)
                     .disabled(isGeneratingMessage)
                 }
 
                 if let index = appState.repositories.firstIndex(where: { $0.id == repo.id }) {
-                    TextField("Commit message…", text: $appState.repositories[index].commitMessage, axis: .vertical)
-                        .font(.system(size: 11, design: .monospaced))
-                        .textFieldStyle(.plain)
-                        .lineLimit(2...8)
-                        .padding(6)
-                        .background(Color(nsColor: .textBackgroundColor))
-                        .cornerRadius(4)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-                        )
+                    ScrollView {
+                        TextEditor(text: $appState.repositories[index].commitMessage)
+                            .font(.system(size: 11, design: .monospaced))
+                            .scrollDisabled(true)
+                    }
+                    .frame(minHeight: 50, maxHeight: 120)
+                    .padding(2)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .cornerRadius(4)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+                    )
                 }
             }
 
-            // Push button
+            // Action buttons
             HStack {
                 Spacer()
                 Button {
-                    Task { await commitAndPush() }
+                    Task { await manualCommitAndPush() }
                 } label: {
                     Text("Commit & Push")
                         .font(.system(size: 11, weight: .medium))
@@ -231,7 +230,15 @@ struct RepoRowView: View {
         }
     }
 
-    private func commitAndPush() async {
+    /// Blue arrow: auto-generate message, commit, push — one click, no expand needed
+    private func quickCommitAndPush() async {
+        await appState.generateCommitMessage(for: repo)
+        await appState.commitAndPush(repo: repo)
+    }
+
+    /// Expanded "Commit & Push" button: use whatever message is in the field
+    private func manualCommitAndPush() async {
+        // If field is empty, generate one
         if let index = appState.repositories.firstIndex(where: { $0.id == repo.id }),
            appState.repositories[index].commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             await appState.generateCommitMessage(for: repo)

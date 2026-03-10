@@ -120,6 +120,89 @@ actor GitService {
         return repos.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
+    /// Query Terminal.app and iTerm2 for their tab working directories via AppleScript
+    private static func getTerminalWorkingDirectories(under directory: String) async -> [String] {
+        var paths: [String] = []
+
+        // Terminal.app
+        let terminalScript = """
+        tell application "System Events"
+            if exists process "Terminal" then
+                tell application "Terminal"
+                    set cwds to {}
+                    repeat with w in windows
+                        repeat with t in tabs of w
+                            try
+                                set end of cwds to (custom title of t)
+                            end try
+                        end repeat
+                    end repeat
+                    return cwds
+                end tell
+            end if
+        end tell
+        return {}
+        """
+
+        // iTerm2
+        let itermScript = """
+        tell application "System Events"
+            if exists process "iTerm2" then
+                tell application "iTerm2"
+                    set cwds to {}
+                    repeat with w in windows
+                        repeat with t in tabs of w
+                            repeat with s in sessions of t
+                                try
+                                    set p to variable named "path" of s
+                                    set end of cwds to p
+                                end try
+                            end repeat
+                        end repeat
+                    end repeat
+                    return cwds
+                end tell
+            end if
+        end tell
+        return {}
+        """
+
+        // Run both in parallel
+        async let termPaths = runAppleScript(terminalScript)
+        async let itermPaths = runAppleScript(itermScript)
+
+        let all = await termPaths + itermPaths
+        for path in all where path.hasPrefix(directory) {
+            paths.append(path)
+        }
+        return paths
+    }
+
+    private static func runAppleScript(_ source: String) async -> [String] {
+        await Task.detached {
+            let process = Process()
+            let pipe = Pipe()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            process.arguments = ["-e", source]
+            process.standardOutput = pipe
+            process.standardError = Pipe()
+
+            do {
+                try process.run()
+                process.waitUntilExit()
+                let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                // osascript returns comma-separated list
+                return output
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .split(separator: ",")
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+            } catch {
+                return []
+            }
+        }.value
+    }
+
     static func getStatus(at path: String) async -> (branch: String, files: [Repository.ChangedFile]) {
         let branch = await run("git", args: ["-C", path, "rev-parse", "--abbrev-ref", "HEAD"])
             .trimmingCharacters(in: .whitespacesAndNewlines)
