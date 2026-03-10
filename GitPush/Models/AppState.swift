@@ -118,7 +118,15 @@ class AppState: ObservableObject {
         }
     }
 
-    func commitAndPush(repo: Repository) async {
+    func commitAndPush(repo: Repository, autoGenerate: Bool = false) async {
+        guard let index = repositories.firstIndex(where: { $0.id == repo.id }) else { return }
+
+        // Generate AI message if requested or if message is empty
+        if autoGenerate || repositories[index].commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            await generateCommitMessage(for: repo)
+        }
+
+        // Re-fetch index in case array changed during generation
         guard let index = repositories.firstIndex(where: { $0.id == repo.id }) else { return }
 
         var message = repositories[index].commitMessage
@@ -193,7 +201,7 @@ class AppState: ObservableObject {
     func commitAndPushAll() async {
         let reposWithChanges = repositories.filter { $0.changedFileCount > 0 }
         for repo in reposWithChanges {
-            await commitAndPush(repo: repo)
+            await commitAndPush(repo: repo, autoGenerate: true)
         }
     }
 

@@ -311,7 +311,6 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
-        .frame(maxHeight: 400)
         .onAppear {
             loadKeyForCurrentProvider()
         }

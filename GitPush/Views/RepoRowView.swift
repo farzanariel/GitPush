@@ -232,8 +232,7 @@ struct RepoRowView: View {
 
     /// Blue arrow: auto-generate message, commit, push — one click, no expand needed
     private func quickCommitAndPush() async {
-        await appState.generateCommitMessage(for: repo)
-        await appState.commitAndPush(repo: repo)
+        await appState.commitAndPush(repo: repo, autoGenerate: true)
     }
 
     /// Expanded "Commit & Push" button: use whatever message is in the field
