@@ -261,30 +261,57 @@ class AppState: ObservableObject {
         }
     }
 
+    private func debugLog(_ msg: String) {
+        let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("GitPush/debug.log")
+        let line = "[\(Date())] \(msg)\n"
+        if let data = line.data(using: .utf8) {
+            if FileManager.default.fileExists(atPath: url.path) {
+                if let handle = try? FileHandle(forWritingTo: url) {
+                    handle.seekToEndOfFile()
+                    handle.write(data)
+                    handle.closeFile()
+                }
+            } else {
+                try? data.write(to: url)
+            }
+        }
+    }
+
     func generateCommitMessage(for repo: Repository) async {
-        guard repoIndex(repo.id) != nil else { return }
+        guard repoIndex(repo.id) != nil else {
+            debugLog("generateCommitMessage: repo not found \(repo.id)")
+            return
+        }
 
         let diff = await GitService.diff(at: repo.path)
         guard !diff.isEmpty else {
+            debugLog("generateCommitMessage: diff is EMPTY for \(repo.name)")
             if let idx = repoIndex(repo.id) {
                 repositories[idx].commitMessage = "update \(DateFormatter.shortDateTime.string(from: Date()))"
             }
             return
         }
 
+        debugLog("generateCommitMessage: diff length=\(diff.count) for \(repo.name)")
+
         let apiKey = currentAPIKey
         if !apiKey.isEmpty {
+            debugLog("generateCommitMessage: calling \(aiProvider) API")
             do {
                 let message = try await AIService.generateCommitMessage(diff: diff, apiKey: apiKey, provider: aiProvider)
+                debugLog("generateCommitMessage: AI returned: \(message.prefix(80))")
                 if let idx = repoIndex(repo.id) {
                     repositories[idx].commitMessage = message
                 }
             } catch {
+                debugLog("generateCommitMessage: AI error: \(error)")
                 if let idx = repoIndex(repo.id) {
                     repositories[idx].commitMessage = "update \(DateFormatter.shortDateTime.string(from: Date()))"
                 }
             }
         } else {
+            debugLog("generateCommitMessage: no API key")
             if let idx = repoIndex(repo.id) {
                 repositories[idx].commitMessage = "update \(DateFormatter.shortDateTime.string(from: Date()))"
             }
