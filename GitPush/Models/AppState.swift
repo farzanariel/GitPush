@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UserNotifications
 
 enum MenuBarStatus: Equatable {
     case idle
@@ -86,6 +87,19 @@ class AppState: ObservableObject {
         animationTimer?.invalidate()
         animationTimer = nil
         animationFrame = 0
+    }
+
+    func requestNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    private func sendNotification(title: String, body: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
     }
 
     func startScanning() {
@@ -200,8 +214,35 @@ class AppState: ObservableObject {
 
     func commitAndPushAll() async {
         let reposWithChanges = repositories.filter { $0.changedFileCount > 0 }
+        guard !reposWithChanges.isEmpty else { return }
+
+        var succeeded: [String] = []
+        var failed: [String] = []
+
         for repo in reposWithChanges {
             await commitAndPush(repo: repo, autoGenerate: true)
+            // Check result
+            if let updated = repositories.first(where: { $0.id == repo.id }) {
+                if case .error = updated.operation {
+                    failed.append(repo.name)
+                } else {
+                    succeeded.append(repo.name)
+                }
+            }
+        }
+
+        // Send notification summary
+        if !failed.isEmpty {
+            sendNotification(
+                title: "GitPush — Failed",
+                body: "Failed: \(failed.joined(separator: ", "))"
+            )
+        } else {
+            let names = succeeded.joined(separator: ", ")
+            sendNotification(
+                title: "GitPush — Pushed",
+                body: "\(succeeded.count) repo\(succeeded.count == 1 ? "" : "s") pushed: \(names)"
+            )
         }
     }
 

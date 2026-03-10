@@ -34,6 +34,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Start scanning and hotkey immediately at launch — not on popover open
         Task { @MainActor in
+            appState.requestNotificationPermission()
             appState.startScanning()
             AppDelegate.setupHotkey()
         }
