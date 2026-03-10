@@ -45,10 +45,17 @@ struct RepoRowView: View {
                             .cornerRadius(3)
                     }
 
-                    if repo.changedFileCount > 0 {
-                        Text("\(repo.changedFileCount) change\(repo.changedFileCount == 1 ? "" : "s")")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                    HStack(spacing: 4) {
+                        if repo.changedFileCount > 0 {
+                            Text("\(repo.changedFileCount) change\(repo.changedFileCount == 1 ? "" : "s")")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                        if repo.unpushedCount > 0 {
+                            Text("\(repo.unpushedCount) unpushed")
+                                .font(.caption2)
+                                .foregroundStyle(.blue.opacity(0.7))
+                        }
                     }
                 }
 
@@ -61,29 +68,37 @@ struct RepoRowView: View {
 
             // Quick action buttons
             if !repo.operation.isInProgress {
-                Button {
-                    Task { await quickCommit() }
-                } label: {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 16))
-                        .symbolRenderingMode(.hierarchical)
+                if repo.changedFileCount > 0 {
+                    Button {
+                        Task { await quickCommit() }
+                    } label: {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 16))
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.green)
+                    .opacity(isHovered ? 1 : 0.7)
+                    .help("Commit")
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.green)
-                .opacity(isHovered ? 1 : 0.7)
-                .help("Commit")
 
-                Button {
-                    Task { await quickCommitAndPush() }
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 16))
-                        .symbolRenderingMode(.hierarchical)
+                if repo.changedFileCount > 0 || repo.unpushedCount > 0 {
+                    Button {
+                        if repo.changedFileCount > 0 {
+                            Task { await quickCommitAndPush() }
+                        } else {
+                            Task { await pushOnly() }
+                        }
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 16))
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.accentColor)
+                    .opacity(isHovered ? 1 : 0.7)
+                    .help(repo.changedFileCount > 0 ? "Commit & Push" : "Push")
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.accentColor)
-                .opacity(isHovered ? 1 : 0.7)
-                .help("Commit & Push")
             }
         }
         .padding(.horizontal, 8)
@@ -95,7 +110,7 @@ struct RepoRowView: View {
         switch repo.operation {
         case .idle:
             Circle()
-                .fill(repo.changedFileCount > 0 ? Color.orange : Color(nsColor: .separatorColor))
+                .fill(repo.changedFileCount > 0 ? Color.orange : (repo.unpushedCount > 0 ? Color.blue : Color(nsColor: .separatorColor)))
                 .frame(width: 6, height: 6)
         case .committing:
             CommittingIndicator()
@@ -194,23 +209,34 @@ struct RepoRowView: View {
             // Action buttons
             HStack {
                 Spacer()
-                Button {
-                    Task { await manualCommit() }
-                } label: {
-                    Text("Commit")
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .controlSize(.small)
-                .disabled(repo.operation.isInProgress)
+                if repo.changedFileCount > 0 {
+                    Button {
+                        Task { await manualCommit() }
+                    } label: {
+                        Text("Commit")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .controlSize(.small)
+                    .disabled(repo.operation.isInProgress)
 
-                Button {
-                    Task { await manualCommitAndPush() }
-                } label: {
-                    Text("Commit & Push")
-                        .font(.system(size: 11, weight: .medium))
+                    Button {
+                        Task { await manualCommitAndPush() }
+                    } label: {
+                        Text("Commit & Push")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .controlSize(.small)
+                    .disabled(repo.operation.isInProgress)
+                } else if repo.unpushedCount > 0 {
+                    Button {
+                        Task { await pushOnly() }
+                    } label: {
+                        Text("Push")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .controlSize(.small)
+                    .disabled(repo.operation.isInProgress)
                 }
-                .controlSize(.small)
-                .disabled(repo.operation.isInProgress)
             }
         }
         .padding(.horizontal, 10)
@@ -259,6 +285,11 @@ struct RepoRowView: View {
     /// Blue arrow: auto-generate message, commit, push
     private func quickCommitAndPush() async {
         await appState.commitAndPush(repo: repo, autoGenerate: true)
+    }
+
+    /// Push only (no commit) — for repos with unpushed commits
+    private func pushOnly() async {
+        await appState.pushOnly(repo: repo)
     }
 
     /// Expanded "Commit" button: use whatever message is in the field

@@ -62,7 +62,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             modifiers: appState.hotkeyModifiers
         ) {
             Task { @MainActor in
-                await appState.commitAndPushAll()
+                // Hotkey = commit only, Hotkey + Shift = commit & push
+                let shiftHeld = NSEvent.modifierFlags.contains(.shift)
+                if shiftHeld {
+                    await appState.commitAndPushAll()
+                } else {
+                    await appState.commitAll()
+                }
             }
         }
     }

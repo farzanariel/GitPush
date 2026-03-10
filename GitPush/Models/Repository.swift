@@ -22,6 +22,7 @@ struct Repository: Identifiable, Equatable {
     var branch: String
     var changedFileCount: Int
     var changedFiles: [ChangedFile]
+    var unpushedCount: Int = 0
     var operation: RepoOperation = .idle
     var commitMessage: String = ""
 

@@ -97,6 +97,7 @@ actor GitService {
             for repoPath in repoRoots {
                 group.addTask {
                     let (branch, changedFiles) = await getStatus(at: repoPath)
+                    let unpushed = await unpushedCount(at: repoPath)
                     let name = (repoPath as NSString).lastPathComponent
                     return Repository(
                         id: repoPath,
@@ -104,15 +105,17 @@ actor GitService {
                         name: name,
                         branch: branch,
                         changedFileCount: changedFiles.count,
-                        changedFiles: changedFiles
+                        changedFiles: changedFiles,
+                        unpushedCount: unpushed
                     )
                 }
             }
 
             var results: [Repository] = []
             for await repo in group {
-                // Only include repos that have changes
-                if let repo = repo, repo.changedFileCount > 0 { results.append(repo) }
+                if let repo = repo, repo.changedFileCount > 0 || repo.unpushedCount > 0 {
+                    results.append(repo)
+                }
             }
             return results
         }
@@ -217,6 +220,11 @@ actor GitService {
         }
 
         return (branch.isEmpty ? "main" : branch, files)
+    }
+
+    static func unpushedCount(at path: String) async -> Int {
+        let output = await run("git", args: ["-C", path, "rev-list", "--count", "@{u}..HEAD"], includeStderr: true)
+        return Int(output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
     }
 
     static func diff(at path: String) async -> String {

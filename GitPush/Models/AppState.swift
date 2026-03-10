@@ -236,6 +236,31 @@ class AppState: ObservableObject {
         }
     }
 
+    func pushOnly(repo: Repository) async {
+        guard let idx = repoIndex(repo.id) else { return }
+        repositories[idx].operation = .pushing
+        menuBarStatus = .pushing(repoName: repo.name)
+        startAnimating()
+
+        let pushResult = await GitService.push(at: repo.path)
+        guard let idx = repoIndex(repo.id) else { return }
+        switch pushResult {
+        case .failure(let error):
+            repositories[idx].operation = .error(error.message)
+            menuBarStatus = .error
+            stopAnimating()
+            scheduleStatusReset(repoID: repo.id)
+        case .success:
+            repositories[idx].operation = .success
+            menuBarStatus = .success
+            stopAnimating()
+            scheduleStatusReset(repoID: repo.id)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                self?.scanRepos()
+            }
+        }
+    }
+
     func generateCommitMessage(for repo: Repository) async {
         guard let index = repositories.firstIndex(where: { $0.id == repo.id }) else { return }
 
@@ -257,6 +282,15 @@ class AppState: ObservableObject {
             }
         } else {
             repositories[index].commitMessage = "update \(DateFormatter.shortDateTime.string(from: Date()))"
+        }
+    }
+
+    func commitAll() async {
+        let reposWithChanges = repositories.filter { $0.changedFileCount > 0 }
+        guard !reposWithChanges.isEmpty else { return }
+
+        for repo in reposWithChanges {
+            await commitOnly(repo: repo, autoGenerate: true)
         }
     }
 
