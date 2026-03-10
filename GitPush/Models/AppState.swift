@@ -136,56 +136,100 @@ class AppState: ObservableObject {
         }
     }
 
-    func commitAndPush(repo: Repository, autoGenerate: Bool = false) async {
-        guard let index = repositories.firstIndex(where: { $0.id == repo.id }) else { return }
+    private func repoIndex(_ id: String) -> Int? {
+        repositories.firstIndex(where: { $0.id == id })
+    }
 
-        // Generate AI message if requested or if message is empty
-        if autoGenerate || repositories[index].commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+    func commitOnly(repo: Repository, autoGenerate: Bool = false) async {
+        guard repoIndex(repo.id) != nil else { return }
+
+        if autoGenerate || repositories[repoIndex(repo.id)!].commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             await generateCommitMessage(for: repo)
         }
 
-        // Re-fetch index in case array changed during generation
-        guard let index = repositories.firstIndex(where: { $0.id == repo.id }) else { return }
+        guard let idx = repoIndex(repo.id) else { return }
 
-        var message = repositories[index].commitMessage
+        var message = repositories[idx].commitMessage
         if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             message = "update \(DateFormatter.shortDateTime.string(from: Date()))"
         }
 
-        // Commit
-        repositories[index].operation = .committing
+        guard let idx = repoIndex(repo.id) else { return }
+        repositories[idx].operation = .committing
         menuBarStatus = .committing(repoName: repo.name)
         startAnimating()
 
         let commitResult = await GitService.commit(at: repo.path, message: message)
+        guard let idx = repoIndex(repo.id) else { return }
         switch commitResult {
         case .failure(let error):
-            repositories[index].operation = .error(error.message)
+            repositories[idx].operation = .error(error.message)
             menuBarStatus = .error
             stopAnimating()
-            scheduleStatusReset(index: index)
+            scheduleStatusReset(repoID: repo.id)
+        case .success:
+            repositories[idx].operation = .success
+            repositories[idx].commitMessage = ""
+            menuBarStatus = .success
+            stopAnimating()
+            scheduleStatusReset(repoID: repo.id)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                self?.scanRepos()
+            }
+        }
+    }
+
+    func commitAndPush(repo: Repository, autoGenerate: Bool = false) async {
+        guard repoIndex(repo.id) != nil else { return }
+
+        if autoGenerate || repositories[repoIndex(repo.id)!].commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            await generateCommitMessage(for: repo)
+        }
+
+        guard let idx = repoIndex(repo.id) else { return }
+
+        var message = repositories[idx].commitMessage
+        if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            message = "update \(DateFormatter.shortDateTime.string(from: Date()))"
+        }
+
+        guard let idx = repoIndex(repo.id) else { return }
+        repositories[idx].operation = .committing
+        menuBarStatus = .committing(repoName: repo.name)
+        startAnimating()
+
+        let commitResult = await GitService.commit(at: repo.path, message: message)
+        guard let idx = repoIndex(repo.id) else { return }
+        switch commitResult {
+        case .failure(let error):
+            repositories[idx].operation = .error(error.message)
+            menuBarStatus = .error
+            stopAnimating()
+            scheduleStatusReset(repoID: repo.id)
             return
         case .success:
             break
         }
 
         // Push
-        repositories[index].operation = .pushing
+        guard let idx = repoIndex(repo.id) else { return }
+        repositories[idx].operation = .pushing
         menuBarStatus = .pushing(repoName: repo.name)
 
         let pushResult = await GitService.push(at: repo.path)
+        guard let idx = repoIndex(repo.id) else { return }
         switch pushResult {
         case .failure(let error):
-            repositories[index].operation = .error(error.message)
+            repositories[idx].operation = .error(error.message)
             menuBarStatus = .error
             stopAnimating()
-            scheduleStatusReset(index: index)
+            scheduleStatusReset(repoID: repo.id)
         case .success:
-            repositories[index].operation = .success
-            repositories[index].commitMessage = ""
+            repositories[idx].operation = .success
+            repositories[idx].commitMessage = ""
             menuBarStatus = .success
             stopAnimating()
-            scheduleStatusReset(index: index)
+            scheduleStatusReset(repoID: repo.id)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
                 self?.scanRepos()
             }
@@ -225,11 +269,11 @@ class AppState: ObservableObject {
         }
     }
 
-    private func scheduleStatusReset(index: Int) {
+    private func scheduleStatusReset(repoID: String) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
             guard let self = self else { return }
-            if index < self.repositories.count {
-                self.repositories[index].operation = .idle
+            if let idx = self.repoIndex(repoID) {
+                self.repositories[idx].operation = .idle
             }
             if !self.repositories.contains(where: { $0.operation.isInProgress }) {
                 self.menuBarStatus = .idle

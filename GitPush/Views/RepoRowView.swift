@@ -59,8 +59,20 @@ struct RepoRowView: View {
                 isExpanded.toggle()
             }
 
-            // Quick push button — auto-generates message, commits, pushes
+            // Quick action buttons
             if !repo.operation.isInProgress {
+                Button {
+                    Task { await quickCommit() }
+                } label: {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 16))
+                        .symbolRenderingMode(.hierarchical)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.green)
+                .opacity(isHovered ? 1 : 0.7)
+                .help("Commit")
+
                 Button {
                     Task { await quickCommitAndPush() }
                 } label: {
@@ -183,6 +195,15 @@ struct RepoRowView: View {
             HStack {
                 Spacer()
                 Button {
+                    Task { await manualCommit() }
+                } label: {
+                    Text("Commit")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .controlSize(.small)
+                .disabled(repo.operation.isInProgress)
+
+                Button {
                     Task { await manualCommitAndPush() }
                 } label: {
                     Text("Commit & Push")
@@ -230,14 +251,27 @@ struct RepoRowView: View {
         }
     }
 
-    /// Blue arrow: auto-generate message, commit, push — one click, no expand needed
+    /// Green checkmark: auto-generate message, commit only
+    private func quickCommit() async {
+        await appState.commitOnly(repo: repo, autoGenerate: true)
+    }
+
+    /// Blue arrow: auto-generate message, commit, push
     private func quickCommitAndPush() async {
         await appState.commitAndPush(repo: repo, autoGenerate: true)
     }
 
+    /// Expanded "Commit" button: use whatever message is in the field
+    private func manualCommit() async {
+        if let index = appState.repositories.firstIndex(where: { $0.id == repo.id }),
+           appState.repositories[index].commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            await appState.generateCommitMessage(for: repo)
+        }
+        await appState.commitOnly(repo: repo)
+    }
+
     /// Expanded "Commit & Push" button: use whatever message is in the field
     private func manualCommitAndPush() async {
-        // If field is empty, generate one
         if let index = appState.repositories.firstIndex(where: { $0.id == repo.id }),
            appState.repositories[index].commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             await appState.generateCommitMessage(for: repo)
