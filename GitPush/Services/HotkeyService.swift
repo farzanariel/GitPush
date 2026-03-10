@@ -1,58 +1,71 @@
+import Carbon
 import AppKit
 
 class HotkeyService {
-    private var globalMonitor: Any?
-    private var localMonitor: Any?
-    private var callback: (() -> Void)?
-    private var targetKeyCode: UInt16 = 0
-    private var targetModifiers: NSEvent.ModifierFlags = []
+    private var hotKeyRef: EventHotKeyRef?
+    private var eventHandler: EventHandlerRef?
+    private static var sharedCallback: (() -> Void)?
 
     static let shared = HotkeyService()
 
-    /// Register a custom hotkey
+    /// Register a custom global hotkey using Carbon API (no Accessibility permission needed)
     func register(keyCode: Int, modifiers: Int, callback: @escaping () -> Void) {
         unregister()
         guard keyCode >= 0 else { return }
 
-        self.callback = callback
-        self.targetKeyCode = UInt16(keyCode)
-        self.targetModifiers = NSEvent.ModifierFlags(rawValue: UInt(modifiers))
-            .intersection([.command, .control, .option, .shift])
+        HotkeyService.sharedCallback = callback
 
-        // Global monitor — fires when other apps are focused
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.handleKeyEvent(event)
-        }
+        // Install Carbon event handler
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
 
-        // Local monitor — fires when this app is focused
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if self?.handleKeyEvent(event) == true {
-                return nil
-            }
-            return event
-        }
-    }
+        let status = InstallEventHandler(
+            GetEventDispatcherTarget(),
+            { (_, inEvent, _) -> OSStatus in
+                HotkeyService.sharedCallback?()
+                return noErr
+            },
+            1,
+            &eventType,
+            nil,
+            &eventHandler
+        )
+        guard status == noErr else { return }
 
-    @discardableResult
-    private func handleKeyEvent(_ event: NSEvent) -> Bool {
-        let eventMods = event.modifierFlags.intersection([.command, .control, .option, .shift])
-        guard event.keyCode == targetKeyCode && eventMods == targetModifiers else {
-            return false
-        }
-        callback?()
-        return true
+        // Convert NSEvent modifier flags to Carbon modifiers
+        let nsFlags = NSEvent.ModifierFlags(rawValue: UInt(modifiers))
+        var carbonMods: UInt32 = 0
+        if nsFlags.contains(.command) { carbonMods |= UInt32(cmdKey) }
+        if nsFlags.contains(.option) { carbonMods |= UInt32(optionKey) }
+        if nsFlags.contains(.control) { carbonMods |= UInt32(controlKey) }
+        if nsFlags.contains(.shift) { carbonMods |= UInt32(shiftKey) }
+
+        var hotKeyID = EventHotKeyID()
+        hotKeyID.signature = OSType(0x47505348) // "GPSH"
+        hotKeyID.id = 1
+
+        RegisterEventHotKey(
+            UInt32(keyCode),
+            carbonMods,
+            hotKeyID,
+            GetEventDispatcherTarget(),
+            0,
+            &hotKeyRef
+        )
     }
 
     func unregister() {
-        if let globalMonitor = globalMonitor {
-            NSEvent.removeMonitor(globalMonitor)
-            self.globalMonitor = nil
+        if let ref = hotKeyRef {
+            UnregisterEventHotKey(ref)
+            hotKeyRef = nil
         }
-        if let localMonitor = localMonitor {
-            NSEvent.removeMonitor(localMonitor)
-            self.localMonitor = nil
+        if let handler = eventHandler {
+            RemoveEventHandler(handler)
+            eventHandler = nil
         }
-        callback = nil
+        HotkeyService.sharedCallback = nil
     }
 
     deinit {

@@ -7,7 +7,8 @@ struct HotkeyRecorderView: View {
     @Binding var keyCode: Int
     @Binding var modifiers: Int
     @State private var isRecording = false
-    @State private var monitor: Any?
+    @State private var globalMonitor: Any?
+    @State private var localMonitor: Any?
 
     var body: some View {
         HStack(spacing: 6) {
@@ -65,33 +66,40 @@ struct HotkeyRecorderView: View {
     }
 
     private func startRecording() {
+        // Unregister the active hotkey while recording so it doesn't intercept our keys
+        HotkeyService.shared.unregister()
         isRecording = true
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            // Require at least one modifier (Cmd, Ctrl, Option, Shift isn't enough alone)
-            let mods = event.modifierFlags.intersection([.command, .control, .option])
-            if !mods.isEmpty {
-                keyCode = Int(event.keyCode)
-                modifiers = Int(event.modifierFlags.intersection([.command, .control, .option, .shift]).rawValue)
-                stopRecording()
-                return nil
-            }
 
-            // Escape to cancel
-            if event.keyCode == 53 {
-                stopRecording()
-                return nil
-            }
-
-            return event
+        // Use both global and local monitors to catch keys regardless of focus
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [self] event in
+            handleRecordedKey(event)
         }
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [self] event in
+            handleRecordedKey(event)
+            return nil
+        }
+    }
+
+    private func handleRecordedKey(_ event: NSEvent) {
+        // Escape to cancel
+        if event.keyCode == 53 {
+            stopRecording()
+            return
+        }
+
+        // Require at least one of Cmd, Ctrl, Option
+        let mods = event.modifierFlags.intersection([.command, .control, .option])
+        guard !mods.isEmpty else { return }
+
+        keyCode = Int(event.keyCode)
+        modifiers = Int(event.modifierFlags.intersection([.command, .control, .option, .shift]).rawValue)
+        stopRecording()
     }
 
     private func stopRecording() {
         isRecording = false
-        if let monitor = monitor {
-            NSEvent.removeMonitor(monitor)
-            self.monitor = nil
-        }
+        if let m = globalMonitor { NSEvent.removeMonitor(m); globalMonitor = nil }
+        if let m = localMonitor { NSEvent.removeMonitor(m); localMonitor = nil }
     }
 
     var shortcutDisplayString: String {
