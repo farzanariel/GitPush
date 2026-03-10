@@ -100,6 +100,8 @@ struct HotkeyRecorderView: View {
         isRecording = false
         if let m = globalMonitor { NSEvent.removeMonitor(m); globalMonitor = nil }
         if let m = localMonitor { NSEvent.removeMonitor(m); localMonitor = nil }
+        // Re-register the hotkey (it was unregistered for recording)
+        AppDelegate.setupHotkey()
     }
 
     var shortcutDisplayString: String {

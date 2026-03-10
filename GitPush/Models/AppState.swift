@@ -52,6 +52,10 @@ class AppState: ObservableObject {
         (projectsPath as NSString).expandingTildeInPath
     }
 
+    var dirtyRepoCount: Int {
+        repositories.filter { $0.changedFileCount > 0 }.count
+    }
+
     var menuBarLabel: String {
         let dots = String(repeating: ".", count: (animationFrame % 3) + 1)
         switch menuBarStatus {

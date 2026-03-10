@@ -17,6 +17,9 @@ struct GitPushApp: App {
                 if !appState.menuBarLabel.isEmpty {
                     Text(appState.menuBarLabel)
                         .font(.system(size: 12))
+                } else if appState.dirtyRepoCount > 0 {
+                    Text("\(appState.dirtyRepoCount)")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
                 }
             }
         }
