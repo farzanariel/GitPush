@@ -277,14 +277,18 @@ struct RepoRowView: View {
         }
     }
 
-    /// Green checkmark: auto-generate message, commit only
+    /// Green checkmark: commit only (generate message if empty)
     private func quickCommit() async {
-        await appState.commitOnly(repo: repo, autoGenerate: true)
+        let hasMessage = appState.repositories.first(where: { $0.id == repo.id })
+            .map { !$0.commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
+        await appState.commitOnly(repo: repo, autoGenerate: !hasMessage)
     }
 
-    /// Blue arrow: auto-generate message, commit, push
+    /// Blue arrow: commit & push (generate message if empty)
     private func quickCommitAndPush() async {
-        await appState.commitAndPush(repo: repo, autoGenerate: true)
+        let hasMessage = appState.repositories.first(where: { $0.id == repo.id })
+            .map { !$0.commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
+        await appState.commitAndPush(repo: repo, autoGenerate: !hasMessage)
     }
 
     /// Push only (no commit) — for repos with unpushed commits
