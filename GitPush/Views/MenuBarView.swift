@@ -18,7 +18,10 @@ struct MenuBarView: View {
             }
         }
         .frame(width: 320)
+        .frame(maxHeight: 600)
+        .fixedSize(horizontal: false, vertical: true)
         .animation(.easeInOut(duration: 0.2), value: showSettings)
+        .animation(.easeInOut(duration: 0.25), value: appState.repositories.count)
     }
 
     private var header: some View {
@@ -64,22 +67,21 @@ struct MenuBarView: View {
     }
 
     private var repoList: some View {
-        Group {
+        VStack(spacing: 0) {
             if appState.repositories.isEmpty {
                 emptyState
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 1) {
-                        ForEach(appState.repositories) { repo in
-                            RepoRowView(repo: repo, appState: appState)
-                        }
+                LazyVStack(spacing: 1) {
+                    ForEach(appState.repositories) { repo in
+                        RepoRowView(repo: repo, appState: appState)
                     }
-                    .padding(6)
                 }
-                .frame(maxHeight: 380)
+                .padding(6)
 
-                footer
+                repoFooter
             }
+
+            bottomBar
         }
     }
 
@@ -100,7 +102,7 @@ struct MenuBarView: View {
         .padding(.vertical, 28)
     }
 
-    private var footer: some View {
+    private var repoFooter: some View {
         VStack(spacing: 0) {
             Divider()
             HStack {
@@ -124,22 +126,30 @@ struct MenuBarView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
+        }
+    }
 
+    private var bottomBar: some View {
+        VStack(spacing: 0) {
             Divider()
-
             HStack(spacing: 3) {
-                Text("⌘⇧G")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(.quaternary)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(.quaternary.opacity(0.3))
-                    .cornerRadius(3)
-                Text("commit & push all")
-                    .font(.caption2)
-                    .foregroundStyle(.quaternary)
+                if appState.hotkeyEnabled && appState.hotkeyKeyCode >= 0 {
+                    Text(HotkeyRecorderView.displayString(
+                        keyCode: appState.hotkeyKeyCode,
+                        modifiers: appState.hotkeyModifiers
+                    ))
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(.quaternary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(.quaternary.opacity(0.3))
+                        .cornerRadius(3)
+                    Text("push all")
+                        .font(.caption2)
+                        .foregroundStyle(.quaternary)
+                }
                 Spacer()
-                Button("Quit") {
+                Button("Quit GitPush") {
                     NSApplication.shared.terminate(nil)
                 }
                 .font(.caption2)
@@ -275,18 +285,28 @@ struct SettingsView: View {
             Section {
                 Toggle("Auto-generate commit messages", isOn: $appState.autoGenerateCommitMessage)
                     .controlSize(.small)
-                Toggle(isOn: $appState.hotkeyEnabled) {
-                    HStack(spacing: 4) {
-                        Text("Global hotkey")
-                        Text("⌘⇧G")
-                            .font(.system(size: 10, design: .rounded))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(.quaternary.opacity(0.5))
-                            .cornerRadius(3)
+            }
+
+            Section {
+                Toggle("Global hotkey", isOn: $appState.hotkeyEnabled)
+                    .controlSize(.small)
+
+                if appState.hotkeyEnabled {
+                    HStack {
+                        Text("Shortcut")
+                            .font(.system(size: 12))
+                        Spacer()
+                        HotkeyRecorderView(
+                            keyCode: $appState.hotkeyKeyCode,
+                            modifiers: $appState.hotkeyModifiers
+                        )
                     }
+                    Text("Commits and pushes all active repos.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
-                .controlSize(.small)
+            } header: {
+                Text("Keyboard Shortcut")
             }
         }
         .formStyle(.grouped)

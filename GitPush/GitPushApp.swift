@@ -3,10 +3,15 @@ import SwiftUI
 @main
 struct GitPushApp: App {
     @StateObject private var appState = AppState()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
         MenuBarExtra {
             MenuBarView(appState: appState)
+                .onAppear {
+                    appState.startScanning()
+                    setupHotkey()
+                }
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: appState.menuBarIcon)
@@ -18,31 +23,31 @@ struct GitPushApp: App {
             }
         }
         .menuBarExtraStyle(.window)
-        .onChange(of: appState.hotkeyEnabled) { _, enabled in
-            if enabled {
-                registerHotkey()
-            } else {
-                HotkeyService.shared.unregister()
-            }
-        }
+        .onChange(of: appState.hotkeyEnabled) { _, _ in setupHotkey() }
+        .onChange(of: appState.hotkeyKeyCode) { _, _ in setupHotkey() }
+        .onChange(of: appState.hotkeyModifiers) { _, _ in setupHotkey() }
         .defaultSize(width: 340, height: 480)
     }
 
-    init() {
-        // Delay setup to after state is initialized
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
-            appState.startScanning()
-            if appState.hotkeyEnabled {
-                registerHotkey()
+    private func setupHotkey() {
+        guard appState.hotkeyEnabled, appState.hotkeyKeyCode >= 0 else {
+            HotkeyService.shared.unregister()
+            return
+        }
+        let state = appState
+        HotkeyService.shared.register(
+            keyCode: state.hotkeyKeyCode,
+            modifiers: state.hotkeyModifiers
+        ) {
+            Task { @MainActor in
+                await state.commitAndPushAll()
             }
         }
     }
+}
 
-    private func registerHotkey() {
-        HotkeyService.shared.register { [self] in
-            Task { @MainActor in
-                await appState.commitAndPushAll()
-            }
-        }
+class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
     }
 }

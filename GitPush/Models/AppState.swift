@@ -18,6 +18,8 @@ class AppState: ObservableObject {
     @AppStorage("projectsPath") var projectsPath: String = "~/Documents/Projects"
     @AppStorage("aiProvider") var aiProviderRaw: String = AIProvider.openai.rawValue
     @AppStorage("hotkeyEnabled") var hotkeyEnabled: Bool = true
+    @AppStorage("hotkeyKeyCode") var hotkeyKeyCode: Int = -1  // -1 = not set
+    @AppStorage("hotkeyModifiers") var hotkeyModifiers: Int = 0
     @AppStorage("autoGenerateCommitMessage") var autoGenerateCommitMessage: Bool = true
 
     private var animationTimer: Timer?
