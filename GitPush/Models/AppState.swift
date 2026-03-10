@@ -220,33 +220,8 @@ class AppState: ObservableObject {
         let reposWithChanges = repositories.filter { $0.changedFileCount > 0 }
         guard !reposWithChanges.isEmpty else { return }
 
-        var succeeded: [String] = []
-        var failed: [String] = []
-
         for repo in reposWithChanges {
             await commitAndPush(repo: repo, autoGenerate: true)
-            // Check result
-            if let updated = repositories.first(where: { $0.id == repo.id }) {
-                if case .error = updated.operation {
-                    failed.append(repo.name)
-                } else {
-                    succeeded.append(repo.name)
-                }
-            }
-        }
-
-        // Send notification summary
-        if !failed.isEmpty {
-            sendNotification(
-                title: "GitPush — Failed",
-                body: "Failed: \(failed.joined(separator: ", "))"
-            )
-        } else {
-            let names = succeeded.joined(separator: ", ")
-            sendNotification(
-                title: "GitPush — Pushed",
-                body: "\(succeeded.count) repo\(succeeded.count == 1 ? "" : "s") pushed: \(names)"
-            )
         }
     }
 
