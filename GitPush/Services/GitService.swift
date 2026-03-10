@@ -289,13 +289,16 @@ actor GitService {
 
             do {
                 try process.run()
-                process.waitUntilExit()
 
+                // Read pipe data BEFORE waitUntilExit to avoid deadlock
+                // when output exceeds the pipe buffer (~64KB)
                 var output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
                 if includeStderr {
                     let errOutput = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
                     if !errOutput.isEmpty { output += "\n" + errOutput }
                 }
+
+                process.waitUntilExit()
                 return output
             } catch {
                 return ""
