@@ -153,15 +153,15 @@ struct RepoRowView: View {
                                     .controlSize(.mini)
                                     .scaleEffect(0.6)
                             } else {
-                                Image(systemName: appState.apiKey.isEmpty ? "text.badge.star" : "sparkles")
+                                Image(systemName: !appState.hasAPIKey ? "text.badge.star" : "sparkles")
                                     .font(.system(size: 9))
                             }
-                            Text(appState.apiKey.isEmpty ? "Auto" : "Generate")
+                            Text(!appState.hasAPIKey ? "Auto" : "Generate")
                                 .font(.caption2)
                         }
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(appState.apiKey.isEmpty ? Color.secondary : Color.purple)
+                    .foregroundStyle(!appState.hasAPIKey ? Color.secondary : Color.purple)
                     .disabled(isGeneratingMessage)
                 }
 
@@ -169,7 +169,7 @@ struct RepoRowView: View {
                     TextField("Commit message…", text: $appState.repositories[index].commitMessage, axis: .vertical)
                         .font(.system(size: 11, design: .monospaced))
                         .textFieldStyle(.plain)
-                        .lineLimit(1...3)
+                        .lineLimit(2...8)
                         .padding(6)
                         .background(Color(nsColor: .textBackgroundColor))
                         .cornerRadius(4)

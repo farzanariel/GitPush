@@ -156,30 +156,46 @@ struct SettingsView: View {
     @ObservedObject var appState: AppState
     @Binding var showSettings: Bool
     @State private var apiKeyInput = ""
-    @State private var pathInput = ""
+    @State private var keySaveState: KeySaveState = .idle
+    @State private var hasExistingKey = false
+
+    enum KeySaveState: Equatable {
+        case idle
+        case saved
+    }
 
     private var apiKeyPlaceholder: String {
         switch appState.aiProvider {
-        case .claude: return "sk-ant-..."
-        case .openai: return "sk-..."
+        case .claude: return "sk-ant-api03-..."
+        case .openai: return "sk-proj-..."
         }
     }
 
     private var modelLabel: String {
         switch appState.aiProvider {
-        case .claude: return "Uses Claude Haiku for commit messages."
-        case .openai: return "Uses GPT-4o mini for commit messages."
+        case .claude: return "Uses Claude Haiku. Stored in Keychain."
+        case .openai: return "Uses GPT-4o mini. Stored in Keychain."
         }
     }
 
     var body: some View {
         Form {
             Section {
-                TextField("~/Documents/Projects", text: $pathInput)
-                    .font(.system(size: 12, design: .monospaced))
-                    .onChange(of: pathInput) { _, newValue in
-                        appState.projectsPath = newValue
+                HStack(spacing: 8) {
+                    Image(systemName: "folder.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text(appState.projectsPath)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                    Spacer()
+                    Button("Choose…") {
+                        chooseFolder()
                     }
+                    .controlSize(.small)
+                }
             } header: {
                 Text("Projects Directory")
             }
@@ -189,8 +205,9 @@ struct SettingsView: View {
                     get: { appState.aiProvider },
                     set: { newValue in
                         appState.aiProvider = newValue
-                        apiKeyInput = ""
-                        appState.apiKey = ""
+                        // Load the key for the new provider
+                        loadKeyForCurrentProvider()
+                        keySaveState = .idle
                     }
                 )) {
                     ForEach(AIProvider.allCases, id: \.self) { provider in
@@ -199,11 +216,54 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.segmented)
 
-                SecureField(apiKeyPlaceholder, text: $apiKeyInput)
-                    .font(.system(size: 12, design: .monospaced))
-                    .onChange(of: apiKeyInput) { _, newValue in
-                        appState.apiKey = newValue
+                if hasExistingKey && apiKeyInput.isEmpty {
+                    HStack(spacing: 8) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "key.fill")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.green)
+                            Text("Saved in Keychain")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Remove") {
+                            appState.saveAPIKey("", for: appState.aiProvider)
+                            hasExistingKey = false
+                        }
+                        .font(.system(size: 10))
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.red)
                     }
+                }
+
+                HStack(spacing: 6) {
+                    SecureField(apiKeyPlaceholder, text: $apiKeyInput)
+                        .font(.system(size: 12, design: .monospaced))
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: apiKeyInput) { _, _ in
+                            keySaveState = .idle
+                        }
+                        .onSubmit { saveKey() }
+
+                    Button {
+                        saveKey()
+                    } label: {
+                        Group {
+                            if keySaveState == .saved {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.green)
+                            } else {
+                                Text("Save")
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                        }
+                        .frame(width: 40)
+                    }
+                    .controlSize(.small)
+                    .disabled(apiKeyInput.isEmpty)
+                }
 
                 Text(modelLabel)
                     .font(.caption2)
@@ -231,15 +291,57 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
-        .frame(maxHeight: 360)
+        .frame(maxHeight: 400)
         .onAppear {
-            apiKeyInput = appState.apiKey
-            pathInput = appState.projectsPath
+            loadKeyForCurrentProvider()
         }
         .onDisappear {
-            if !apiKeyInput.isEmpty { appState.apiKey = apiKeyInput }
-            if !pathInput.isEmpty { appState.projectsPath = pathInput }
             appState.scanRepos()
+        }
+        .animation(.easeOut(duration: 0.2), value: keySaveState)
+        .animation(.easeOut(duration: 0.2), value: hasExistingKey)
+    }
+
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose your projects directory"
+        panel.prompt = "Select"
+        panel.directoryURL = URL(fileURLWithPath: appState.expandedProjectsPath)
+
+        // Bring panel to front above the menu bar popover
+        panel.level = .floating
+
+        if panel.runModal() == .OK, let url = panel.url {
+            // Use ~ shorthand if inside home directory
+            let homePath = FileManager.default.homeDirectoryForCurrentUser.path
+            if url.path.hasPrefix(homePath) {
+                appState.projectsPath = "~" + url.path.dropFirst(homePath.count)
+            } else {
+                appState.projectsPath = url.path
+            }
+        }
+    }
+
+    private func loadKeyForCurrentProvider() {
+        let existingKey = appState.currentAPIKey
+        hasExistingKey = !existingKey.isEmpty
+        apiKeyInput = ""
+        keySaveState = .idle
+    }
+
+    private func saveKey() {
+        guard !apiKeyInput.isEmpty else { return }
+        appState.saveAPIKey(apiKeyInput, for: appState.aiProvider)
+        hasExistingKey = true
+        apiKeyInput = ""
+        keySaveState = .saved
+
+        // Reset checkmark after a moment
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            keySaveState = .idle
         }
     }
 }

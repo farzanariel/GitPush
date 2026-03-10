@@ -59,6 +59,39 @@ actor GitService {
             }
         }
 
+        // Strategy 2: Query terminal app windows for their working directories
+        // Terminal.app and iTerm2 expose tab cwds via AppleScript
+        let terminalPaths = await getTerminalWorkingDirectories(under: directory)
+        for path in terminalPaths {
+            var current = path
+            while current != directory && current != "/" {
+                let gitDir = (current as NSString).appendingPathComponent(".git")
+                var isDir: ObjCBool = false
+                if fileManager.fileExists(atPath: gitDir, isDirectory: &isDir), isDir.boolValue {
+                    repoRoots.insert(current)
+                    break
+                }
+                current = (current as NSString).deletingLastPathComponent
+            }
+        }
+
+        // Strategy 3: Find repos with recently modified .git directories (last 24h)
+        // This catches repos actively being worked on even if no process cwd matches
+        // (e.g., Cursor opens a folder but its cwd is elsewhere, or Claude runs from ~)
+        let recentCutoff = Date().addingTimeInterval(-24 * 60 * 60)
+        if let contents = try? fileManager.contentsOfDirectory(atPath: directory) {
+            for item in contents {
+                let repoPath = (directory as NSString).appendingPathComponent(item)
+                let gitIndex = (repoPath as NSString).appendingPathComponent(".git/index")
+
+                guard let attrs = try? fileManager.attributesOfItem(atPath: gitIndex),
+                      let modified = attrs[.modificationDate] as? Date,
+                      modified > recentCutoff else { continue }
+
+                repoRoots.insert(repoPath)
+            }
+        }
+
         // Get status for each active repo (in parallel)
         let repos = await withTaskGroup(of: Repository?.self) { group in
             for repoPath in repoRoots {

@@ -16,18 +16,34 @@ class AppState: ObservableObject {
     @Published var animationFrame: Int = 0
 
     @AppStorage("projectsPath") var projectsPath: String = "~/Documents/Projects"
-    @AppStorage("apiKey") var apiKey: String = ""
     @AppStorage("aiProvider") var aiProviderRaw: String = AIProvider.openai.rawValue
     @AppStorage("hotkeyEnabled") var hotkeyEnabled: Bool = true
     @AppStorage("autoGenerateCommitMessage") var autoGenerateCommitMessage: Bool = true
+
+    private var animationTimer: Timer?
+    private var scanTimer: Timer?
 
     var aiProvider: AIProvider {
         get { AIProvider(rawValue: aiProviderRaw) ?? .openai }
         set { aiProviderRaw = newValue.rawValue }
     }
 
-    private var animationTimer: Timer?
-    private var scanTimer: Timer?
+    /// Get the API key for the current provider from Keychain
+    var currentAPIKey: String {
+        let keychainKey = aiProvider == .claude ? "claude-api-key" : "openai-api-key"
+        return KeychainService.load(key: keychainKey) ?? ""
+    }
+
+    /// Save an API key for a specific provider to Keychain
+    func saveAPIKey(_ key: String, for provider: AIProvider) {
+        let keychainKey = provider == .claude ? "claude-api-key" : "openai-api-key"
+        _ = KeychainService.save(key: keychainKey, value: key)
+    }
+
+    /// Check if the current provider has a saved API key
+    var hasAPIKey: Bool {
+        !currentAPIKey.isEmpty
+    }
 
     var expandedProjectsPath: String {
         (projectsPath as NSString).expandingTildeInPath
@@ -157,6 +173,7 @@ class AppState: ObservableObject {
             return
         }
 
+        let apiKey = currentAPIKey
         if !apiKey.isEmpty {
             do {
                 let message = try await AIService.generateCommitMessage(diff: diff, apiKey: apiKey, provider: aiProvider)

@@ -7,10 +7,12 @@ enum AIProvider: String, CaseIterable {
 
 struct AIService {
     private static let commitPrompt = """
-    Generate a concise git commit message for the following diff. \
-    The message should be a single line, max 72 characters, in imperative mood \
-    (e.g., "Add feature" not "Added feature"). No quotes, no prefix like "feat:" unless it's a clear convention. \
-    Just return the commit message, nothing else.
+    Generate a git commit message for the following diff. Format:
+    - First line: short summary, max 72 characters, imperative mood (e.g., "Add feature" not "Added feature")
+    - Blank line
+    - Body: 2-4 bullet points describing the key changes. Each bullet starts with "- ".
+
+    No quotes around the message. No prefix like "feat:". Just return the commit message, nothing else.
 
     Diff:
     """
@@ -49,7 +51,7 @@ struct AIService {
 
         let body = ClaudeRequest(
             model: "claude-haiku-4-5-20251001",
-            max_tokens: 100,
+            max_tokens: 300,
             messages: [.init(role: "user", content: commitPrompt + diff)]
         )
         request.httpBody = try JSONEncoder().encode(body)
@@ -90,7 +92,7 @@ struct AIService {
 
         let body = OpenAIRequest(
             model: "gpt-4o-mini",
-            max_tokens: 100,
+            max_tokens: 300,
             messages: [.init(role: "user", content: commitPrompt + diff)]
         )
         request.httpBody = try JSONEncoder().encode(body)
