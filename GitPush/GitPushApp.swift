@@ -11,23 +11,31 @@ struct GitPushApp: App {
         MenuBarExtra {
             MenuBarView(appState: appState)
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: appState.menuBarIcon)
-                    .symbolRenderingMode(.hierarchical)
-                if !appState.menuBarLabel.isEmpty {
-                    Text(appState.menuBarLabel)
-                        .font(.system(size: 12))
-                } else if appState.dirtyRepoCount > 0 {
-                    Text("\(appState.dirtyRepoCount)")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                }
-            }
+            MenuBarLabelView(appState: appState)
         }
         .menuBarExtraStyle(.window)
         .onChange(of: appState.hotkeyEnabled) { _, _ in AppDelegate.setupHotkey() }
         .onChange(of: appState.hotkeyKeyCode) { _, _ in AppDelegate.setupHotkey() }
         .onChange(of: appState.hotkeyModifiers) { _, _ in AppDelegate.setupHotkey() }
         .defaultSize(width: 340, height: 480)
+    }
+}
+
+struct MenuBarLabelView: View {
+    @ObservedObject var appState: AppState
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: appState.menuBarIcon)
+                .symbolRenderingMode(.hierarchical)
+            if !appState.menuBarLabel.isEmpty {
+                Text(appState.menuBarLabel)
+                    .font(.system(size: 12))
+            } else if appState.dirtyRepoCount > 0 {
+                Text("\(appState.dirtyRepoCount)")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+            }
+        }
     }
 }
 
