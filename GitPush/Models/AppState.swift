@@ -141,9 +141,14 @@ class AppState: ObservableObject {
     }
 
     func commitOnly(repo: Repository, autoGenerate: Bool = false) async {
-        guard repoIndex(repo.id) != nil else { return }
+        guard let idx = repoIndex(repo.id) else { return }
 
-        if autoGenerate || repositories[repoIndex(repo.id)!].commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        // Show immediate feedback before AI generation
+        repositories[idx].operation = .committing
+        menuBarStatus = .committing(repoName: repo.name)
+        startAnimating()
+
+        if autoGenerate || repositories[idx].commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             await generateCommitMessage(for: repo)
         }
 
@@ -153,11 +158,6 @@ class AppState: ObservableObject {
         if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             message = "update \(DateFormatter.shortDateTime.string(from: Date()))"
         }
-
-        guard let idx = repoIndex(repo.id) else { return }
-        repositories[idx].operation = .committing
-        menuBarStatus = .committing(repoName: repo.name)
-        startAnimating()
 
         let commitResult = await GitService.commit(at: repo.path, message: message)
         guard let idx = repoIndex(repo.id) else { return }
@@ -180,9 +180,14 @@ class AppState: ObservableObject {
     }
 
     func commitAndPush(repo: Repository, autoGenerate: Bool = false) async {
-        guard repoIndex(repo.id) != nil else { return }
+        guard let idx = repoIndex(repo.id) else { return }
 
-        if autoGenerate || repositories[repoIndex(repo.id)!].commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        // Show immediate feedback before AI generation
+        repositories[idx].operation = .committing
+        menuBarStatus = .committing(repoName: repo.name)
+        startAnimating()
+
+        if autoGenerate || repositories[idx].commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             await generateCommitMessage(for: repo)
         }
 
@@ -192,11 +197,6 @@ class AppState: ObservableObject {
         if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             message = "update \(DateFormatter.shortDateTime.string(from: Date()))"
         }
-
-        guard let idx = repoIndex(repo.id) else { return }
-        repositories[idx].operation = .committing
-        menuBarStatus = .committing(repoName: repo.name)
-        startAnimating()
 
         let commitResult = await GitService.commit(at: repo.path, message: message)
         guard let idx = repoIndex(repo.id) else { return }
@@ -262,11 +262,13 @@ class AppState: ObservableObject {
     }
 
     func generateCommitMessage(for repo: Repository) async {
-        guard let index = repositories.firstIndex(where: { $0.id == repo.id }) else { return }
+        guard repoIndex(repo.id) != nil else { return }
 
         let diff = await GitService.diff(at: repo.path)
         guard !diff.isEmpty else {
-            repositories[index].commitMessage = "update \(DateFormatter.shortDateTime.string(from: Date()))"
+            if let idx = repoIndex(repo.id) {
+                repositories[idx].commitMessage = "update \(DateFormatter.shortDateTime.string(from: Date()))"
+            }
             return
         }
 
@@ -274,14 +276,18 @@ class AppState: ObservableObject {
         if !apiKey.isEmpty {
             do {
                 let message = try await AIService.generateCommitMessage(diff: diff, apiKey: apiKey, provider: aiProvider)
-                if let idx = repositories.firstIndex(where: { $0.id == repo.id }) {
+                if let idx = repoIndex(repo.id) {
                     repositories[idx].commitMessage = message
                 }
             } catch {
-                repositories[index].commitMessage = "update \(DateFormatter.shortDateTime.string(from: Date()))"
+                if let idx = repoIndex(repo.id) {
+                    repositories[idx].commitMessage = "update \(DateFormatter.shortDateTime.string(from: Date()))"
+                }
             }
         } else {
-            repositories[index].commitMessage = "update \(DateFormatter.shortDateTime.string(from: Date()))"
+            if let idx = repoIndex(repo.id) {
+                repositories[idx].commitMessage = "update \(DateFormatter.shortDateTime.string(from: Date()))"
+            }
         }
     }
 
