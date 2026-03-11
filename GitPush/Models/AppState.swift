@@ -56,6 +56,13 @@ class AppState: ObservableObject {
         repositories.filter { $0.changedFileCount > 0 }.count
     }
 
+    var showsMenuBarCount: Bool {
+        if case .idle = menuBarStatus {
+            return true
+        }
+        return false
+    }
+
     var menuBarLabel: String {
         let dots = String(repeating: ".", count: (animationFrame % 3) + 1)
         switch menuBarStatus {
@@ -70,8 +77,20 @@ class AppState: ObservableObject {
     var menuBarIcon: String {
         switch menuBarStatus {
         case .idle: return "arrow.up.circle"
-        case .committing: return "ellipsis.circle"
-        case .pushing: return "icloud.and.arrow.up"
+        case .committing:
+            let frames = [
+                "point.topleft.down.curvedto.point.bottomright.up",
+                "point.topleft.down.curvedto.point.bottomright.up.fill",
+                "point.topleft.down.curvedto.point.bottomright.up"
+            ]
+            return frames[animationFrame % frames.count]
+        case .pushing:
+            let frames = [
+                "arrow.up",
+                "arrow.up.circle",
+                "arrow.up.circle.fill"
+            ]
+            return frames[animationFrame % frames.count]
         case .success: return "checkmark.circle.fill"
         case .error: return "exclamationmark.circle.fill"
         }

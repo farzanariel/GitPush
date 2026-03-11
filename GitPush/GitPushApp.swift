@@ -16,24 +16,6 @@ struct GitPushApp: App {
     }
 }
 
-struct MenuBarLabelView: View {
-    @ObservedObject var appState: AppState
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: appState.menuBarIcon)
-                .symbolRenderingMode(.hierarchical)
-            if !appState.menuBarLabel.isEmpty {
-                Text(appState.menuBarLabel)
-                    .font(.system(size: 12))
-            } else if appState.dirtyRepoCount > 0 {
-                Text("\(appState.dirtyRepoCount)")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-            }
-        }
-    }
-}
-
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
@@ -125,19 +107,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             systemSymbolName: appState.menuBarIcon,
             accessibilityDescription: "GitPush"
         )
-        button.imagePosition = .imageLeading
+        button.imagePosition = appState.showsMenuBarCount ? .imageLeading : .imageOnly
         button.title = statusItemTitle
-        button.toolTip = "GitPush"
+        button.contentTintColor = statusItemTintColor
+        button.toolTip = appState.menuBarLabel.isEmpty ? "GitPush" : appState.menuBarLabel
     }
 
     private var statusItemTitle: String {
-        if !appState.menuBarLabel.isEmpty {
-            return appState.menuBarLabel
-        }
-        if appState.dirtyRepoCount > 0 {
+        if appState.showsMenuBarCount, appState.dirtyRepoCount > 0 {
             return "\(appState.dirtyRepoCount)"
         }
         return ""
+    }
+
+    private var statusItemTintColor: NSColor? {
+        switch appState.menuBarStatus {
+        case .idle:
+            return nil
+        case .committing:
+            return .systemOrange
+        case .pushing:
+            return .systemBlue
+        case .success:
+            return .systemGreen
+        case .error:
+            return .systemRed
+        }
     }
 
     private func updatePopoverSizeFromFittingSize() {
