@@ -326,7 +326,7 @@ struct MenuBarView: View {
             get: { expandedRepoIDs.contains(repoID) },
             set: { isExpanded in
                 if isExpanded {
-                    expandedRepoIDs.insert(repoID)
+                    expandedRepoIDs = [repoID]
                 } else {
                     expandedRepoIDs.remove(repoID)
                 }
