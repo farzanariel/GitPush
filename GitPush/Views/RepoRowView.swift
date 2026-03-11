@@ -7,10 +7,16 @@ struct RepoRowView: View {
     @State private var isGeneratingMessage = false
     @State private var isHovered = false
 
+    init(repo: Repository, appState: AppState, initiallyExpanded: Bool = false) {
+        self.repo = repo
+        self.appState = appState
+        _isExpanded = State(initialValue: initiallyExpanded)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             mainRow
-            if isExpanded { expandedContent }
+            expandedContent
             if case .error(let msg) = repo.operation { errorBanner(msg) }
         }
         .background(
@@ -19,7 +25,6 @@ struct RepoRowView: View {
         )
         .onHover { isHovered = $0 }
         .animation(.easeOut(duration: 0.12), value: isHovered)
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isExpanded)
         .animation(.spring(response: 0.35, dampingFraction: 0.7), value: repo.operation)
     }
 
@@ -63,7 +68,9 @@ struct RepoRowView: View {
             }
             .contentShape(Rectangle())
             .onTapGesture {
-                isExpanded.toggle()
+                withAnimation(.spring(response: 0.26, dampingFraction: 0.9)) {
+                    isExpanded.toggle()
+                }
             }
 
             // Quick action buttons
@@ -130,6 +137,12 @@ struct RepoRowView: View {
     }
 
     private var expandedContent: some View {
+        ExpandableReveal(isExpanded: isExpanded) {
+            expandedContentBody
+        }
+    }
+
+    private var expandedContentBody: some View {
         VStack(spacing: 6) {
             // File list
             VStack(spacing: 0) {
@@ -241,7 +254,6 @@ struct RepoRowView: View {
         }
         .padding(.horizontal, 10)
         .padding(.bottom, 8)
-        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
     private func errorBanner(_ message: String) -> some View {
@@ -351,4 +363,79 @@ struct PushingIndicator: View {
                 }
             }
     }
+}
+
+private struct ExpandableReveal<Content: View>: View {
+    let isExpanded: Bool
+    @ViewBuilder let content: Content
+
+    @State private var measuredHeight: CGFloat = 0
+
+    var body: some View {
+        content
+            .fixedSize(horizontal: false, vertical: true)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear {
+                            measuredHeight = proxy.size.height
+                        }
+                        .onChange(of: proxy.size.height) { _, newHeight in
+                            measuredHeight = newHeight
+                        }
+                }
+            )
+            .frame(height: isExpanded ? measuredHeight : 0, alignment: .top)
+            .opacity(isExpanded ? 1 : 0)
+            .clipped()
+            .allowsHitTesting(isExpanded)
+    }
+}
+
+@MainActor
+private struct RepoRowPreviewHost: View {
+    @StateObject private var appState: AppState
+    private let initiallyExpanded: Bool
+
+    init(initiallyExpanded: Bool) {
+        let state = AppState()
+        let repo = Repository(
+            id: "preview-repo",
+            path: "/Users/farzan/Documents/Projects/GitPush",
+            name: "GitPush",
+            branch: "main",
+            changedFileCount: 4,
+            changedFiles: [
+                .init(status: "M", path: "GitPush/Views/RepoRowView.swift"),
+                .init(status: "A", path: "GitPush/Views/PreviewFixtures.swift"),
+                .init(status: "??", path: "docs/dropdown-motion-notes.md"),
+                .init(status: "R", path: "GitPush/Views/LegacyRow.swift -> GitPush/Views/RepoRowView.swift")
+            ],
+            unpushedCount: 2,
+            operation: .idle,
+            commitMessage: "Refine repo row expansion so the panel grows from the selected entry."
+        )
+        state.repositories = [repo]
+        _appState = StateObject(wrappedValue: state)
+        self.initiallyExpanded = initiallyExpanded
+    }
+
+    var body: some View {
+        RepoRowView(
+            repo: appState.repositories[0],
+            appState: appState,
+            initiallyExpanded: initiallyExpanded
+        )
+        .padding(12)
+        .frame(width: 320)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+}
+
+#Preview("Collapsed Repo Row") {
+    RepoRowPreviewHost(initiallyExpanded: false)
+}
+
+#Preview("Expanded Repo Row") {
+    RepoRowPreviewHost(initiallyExpanded: true)
 }
