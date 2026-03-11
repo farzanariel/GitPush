@@ -2,9 +2,19 @@ import SwiftUI
 
 struct MenuBarView: View {
     @ObservedObject var appState: AppState
+    let onPreferredSizeChange: (CGSize) -> Void
     @State private var showSettings = false
+    @State private var expandedRepoIDs: Set<String> = []
     @State private var repoContentHeight: CGFloat = 0
     @State private var settingsContentHeight: CGFloat = 0
+
+    init(
+        appState: AppState,
+        onPreferredSizeChange: @escaping (CGSize) -> Void = { _ in }
+    ) {
+        self.appState = appState
+        self.onPreferredSizeChange = onPreferredSizeChange
+    }
 
     private var activeRepoCount: Int {
         appState.repositories.filter { $0.changedFileCount > 0 || $0.unpushedCount > 0 }.count
@@ -37,8 +47,12 @@ struct MenuBarView: View {
             .padding(10)
         }
         .frame(width: 348)
-        .frame(maxHeight: 620)
         .fixedSize(horizontal: false, vertical: true)
+        .background(
+            SizeReader { size in
+                onPreferredSizeChange(size)
+            }
+        )
         .animation(.spring(response: 0.32, dampingFraction: 0.9), value: showSettings)
     }
 
@@ -183,20 +197,23 @@ struct MenuBarView: View {
 
     private var repoList: some View {
         VStack(spacing: 10) {
-            overviewCard
+            if appState.repositories.count > 1 {
+                overviewCard
+            }
 
             if appState.repositories.isEmpty {
                 emptyState
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 8) {
-                        ForEach(appState.repositories) { repo in
-                            RepoRowView(repo: repo, appState: appState)
-                        }
+                LazyVStack(spacing: 8) {
+                    ForEach(appState.repositories) { repo in
+                        RepoRowView(
+                            repo: repo,
+                            appState: appState,
+                            isExpanded: expansionBinding(for: repo.id)
+                        )
                     }
-                    .padding(.vertical, 2)
                 }
-                .frame(maxHeight: 390)
+                .padding(.vertical, 2)
             }
 
             bottomBar
@@ -303,6 +320,19 @@ struct MenuBarView: View {
             }
         }
     }
+
+    private func expansionBinding(for repoID: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedRepoIDs.contains(repoID) },
+            set: { isExpanded in
+                if isExpanded {
+                    expandedRepoIDs.insert(repoID)
+                } else {
+                    expandedRepoIDs.remove(repoID)
+                }
+            }
+        )
+    }
 }
 
 struct SettingsView: View {
@@ -332,7 +362,7 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        ScrollView {
+        LimitedHeightScrollView(maxHeight: 470) {
             VStack(spacing: 10) {
                 settingsCard(title: "Projects Directory", subtitle: "Where GitPush looks for repos you are actively working on.") {
                     HStack(spacing: 8) {
@@ -476,8 +506,6 @@ struct SettingsView: View {
             }
             .padding(.vertical, 1)
         }
-        .scrollIndicators(.hidden)
-        .frame(maxHeight: 470)
         .onAppear {
             loadKeyForCurrentProvider()
         }
@@ -581,5 +609,39 @@ private struct HeightReader: View {
                     onChange(newHeight)
                 }
         }
+    }
+}
+
+private struct SizeReader: View {
+    let onChange: (CGSize) -> Void
+
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear
+                .onAppear {
+                    onChange(proxy.size)
+                }
+                .onChange(of: proxy.size) { _, newSize in
+                    onChange(newSize)
+                }
+        }
+    }
+}
+
+private struct LimitedHeightScrollView<Content: View>: View {
+    let maxHeight: CGFloat
+    @ViewBuilder let content: Content
+
+    @State private var contentHeight: CGFloat = 1
+
+    var body: some View {
+        ScrollView {
+            content
+                .background(
+                    HeightReader { contentHeight = $0 }
+                )
+        }
+        .scrollIndicators(.hidden)
+        .frame(height: min(contentHeight, maxHeight))
     }
 }

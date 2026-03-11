@@ -1,3 +1,5 @@
+import AppKit
+import Combine
 import SwiftUI
 
 @MainActor
@@ -8,16 +10,9 @@ struct GitPushApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        MenuBarExtra {
-            MenuBarView(appState: appState)
-        } label: {
-            MenuBarLabelView(appState: appState)
+        Settings {
+            EmptyView()
         }
-        .menuBarExtraStyle(.window)
-        .onChange(of: appState.hotkeyEnabled) { _, _ in AppDelegate.setupHotkey() }
-        .onChange(of: appState.hotkeyKeyCode) { _, _ in AppDelegate.setupHotkey() }
-        .onChange(of: appState.hotkeyModifiers) { _, _ in AppDelegate.setupHotkey() }
-        .defaultSize(width: 340, height: 480)
     }
 }
 
@@ -39,14 +34,129 @@ struct MenuBarLabelView: View {
     }
 }
 
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
+    private var statusItem: NSStatusItem?
+    private let popover = NSPopover()
+    private var hostingController: NSHostingController<MenuBarView>?
+    private var cancellables: Set<AnyCancellable> = []
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
-        // Start scanning and hotkey immediately at launch — not on popover open
+        setupPopover()
+        setupStatusItem()
+        observeAppState()
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(userDefaultsDidChange),
+            name: UserDefaults.didChangeNotification,
+            object: nil
+        )
+
         Task { @MainActor in
             appState.requestNotificationPermission()
             appState.startScanning()
+            AppDelegate.setupHotkey()
+            updateStatusItem()
+            updatePopoverSizeFromFittingSize()
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    private func setupPopover() {
+        let rootView = MenuBarView(appState: appState) { [weak self] size in
+            self?.updatePopoverSize(to: size)
+        }
+        let controller = NSHostingController(rootView: rootView)
+        controller.view.translatesAutoresizingMaskIntoConstraints = false
+        hostingController = controller
+
+        popover.behavior = .transient
+        popover.animates = false
+        popover.contentViewController = controller
+    }
+
+    private func setupStatusItem() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = item
+
+        guard let button = item.button else { return }
+        button.target = self
+        button.action = #selector(togglePopover(_:))
+        button.sendAction(on: [.leftMouseUp])
+        updateStatusItem()
+    }
+
+    private func observeAppState() {
+        appState.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                DispatchQueue.main.async {
+                    self?.updateStatusItem()
+                    self?.updatePopoverSizeFromFittingSize()
+                }
+            }
+            .store(in: &cancellables)
+    }
+
+    @objc
+    private func togglePopover(_ sender: AnyObject?) {
+        guard let button = statusItem?.button else { return }
+
+        if popover.isShown {
+            popover.performClose(sender)
+            return
+        }
+
+        updatePopoverSizeFromFittingSize()
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        popover.contentViewController?.view.window?.makeKey()
+    }
+
+    private func updateStatusItem() {
+        guard let button = statusItem?.button else { return }
+
+        button.image = NSImage(
+            systemSymbolName: appState.menuBarIcon,
+            accessibilityDescription: "GitPush"
+        )
+        button.imagePosition = .imageLeading
+        button.title = statusItemTitle
+        button.toolTip = "GitPush"
+    }
+
+    private var statusItemTitle: String {
+        if !appState.menuBarLabel.isEmpty {
+            return appState.menuBarLabel
+        }
+        if appState.dirtyRepoCount > 0 {
+            return "\(appState.dirtyRepoCount)"
+        }
+        return ""
+    }
+
+    private func updatePopoverSizeFromFittingSize() {
+        guard let view = hostingController?.view else { return }
+        view.layoutSubtreeIfNeeded()
+        updatePopoverSize(to: view.fittingSize)
+    }
+
+    private func updatePopoverSize(to size: CGSize) {
+        let clampedSize = CGSize(
+            width: max(320, ceil(size.width)),
+            height: max(1, ceil(size.height))
+        )
+        popover.contentSize = clampedSize
+    }
+
+    @objc
+    private func userDefaultsDidChange() {
+        Task { @MainActor in
             AppDelegate.setupHotkey()
         }
     }
@@ -62,7 +172,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             modifiers: appState.hotkeyModifiers
         ) {
             Task { @MainActor in
-                // Hotkey = commit only, Hotkey + Shift = commit & push
                 let shiftHeld = NSEvent.modifierFlags.contains(.shift)
                 if shiftHeld {
                     await appState.commitAndPushAll()

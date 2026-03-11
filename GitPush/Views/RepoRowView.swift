@@ -3,14 +3,18 @@ import SwiftUI
 struct RepoRowView: View {
     let repo: Repository
     @ObservedObject var appState: AppState
-    @State private var isExpanded = false
+    @Binding var isExpanded: Bool
     @State private var isGeneratingMessage = false
     @State private var isHovered = false
 
-    init(repo: Repository, appState: AppState, initiallyExpanded: Bool = false) {
+    init(
+        repo: Repository,
+        appState: AppState,
+        isExpanded: Binding<Bool> = .constant(false)
+    ) {
         self.repo = repo
         self.appState = appState
-        _isExpanded = State(initialValue: initiallyExpanded)
+        _isExpanded = isExpanded
     }
 
     var body: some View {
@@ -535,7 +539,7 @@ private struct RepoRowPreviewHost: View {
         RepoRowView(
             repo: appState.repositories[0],
             appState: appState,
-            initiallyExpanded: initiallyExpanded
+            isExpanded: .constant(initiallyExpanded)
         )
         .padding(12)
         .frame(width: 368)
