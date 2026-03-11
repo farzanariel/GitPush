@@ -44,18 +44,7 @@ actor GitService {
             } else if s.hasPrefix("n") {
                 let path = String(s.dropFirst())
                 guard activeProcesses.contains(currentCommand) && path.hasPrefix(directory) else { continue }
-
-                // Walk up to find repo root
-                var current = path
-                while current != directory && current != "/" {
-                    let gitDir = (current as NSString).appendingPathComponent(".git")
-                    var isDir: ObjCBool = false
-                    if fileManager.fileExists(atPath: gitDir, isDirectory: &isDir), isDir.boolValue {
-                        repoRoots.insert(current)
-                        break
-                    }
-                    current = (current as NSString).deletingLastPathComponent
-                }
+                collectRepoRoots(from: path, under: directory, using: fileManager, into: &repoRoots)
             }
         }
 
@@ -63,16 +52,7 @@ actor GitService {
         // Terminal.app and iTerm2 expose tab cwds via AppleScript
         let terminalPaths = await getTerminalWorkingDirectories(under: directory)
         for path in terminalPaths {
-            var current = path
-            while current != directory && current != "/" {
-                let gitDir = (current as NSString).appendingPathComponent(".git")
-                var isDir: ObjCBool = false
-                if fileManager.fileExists(atPath: gitDir, isDirectory: &isDir), isDir.boolValue {
-                    repoRoots.insert(current)
-                    break
-                }
-                current = (current as NSString).deletingLastPathComponent
-            }
+            collectRepoRoots(from: path, under: directory, using: fileManager, into: &repoRoots)
         }
 
         // Strategy 3: Find repos with recently modified .git directories (last 24h)
@@ -121,6 +101,93 @@ actor GitService {
         }
 
         return repos.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private static func collectRepoRoots(
+        from path: String,
+        under projectsDirectory: String,
+        using fileManager: FileManager,
+        into repoRoots: inout Set<String>
+    ) {
+        if let repoRoot = findRepoRoot(from: path, stoppingAt: projectsDirectory, using: fileManager) {
+            repoRoots.insert(repoRoot)
+            return
+        }
+
+        for nestedRepo in findNestedRepoRoots(under: path, maxDepth: 3, using: fileManager) {
+            repoRoots.insert(nestedRepo)
+        }
+    }
+
+    private static func findRepoRoot(
+        from path: String,
+        stoppingAt projectsDirectory: String,
+        using fileManager: FileManager
+    ) -> String? {
+        let stopPath = (projectsDirectory as NSString).standardizingPath
+        var current = (path as NSString).standardizingPath
+
+        while true {
+            if isGitRepository(at: current, using: fileManager) {
+                return current
+            }
+
+            if current == stopPath || current == "/" {
+                return nil
+            }
+
+            let parent = (current as NSString).deletingLastPathComponent
+            if parent == current {
+                return nil
+            }
+            current = parent
+        }
+    }
+
+    private static func findNestedRepoRoots(
+        under path: String,
+        maxDepth: Int,
+        using fileManager: FileManager
+    ) -> [String] {
+        let baseURL = URL(fileURLWithPath: path)
+        guard let enumerator = fileManager.enumerator(
+            at: baseURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [],
+            errorHandler: { _, _ in true }
+        ) else {
+            return []
+        }
+
+        let baseDepth = baseURL.pathComponents.count
+        let ignoredDirectories: Set<String> = ["node_modules", ".next", "Pods", "build", "DerivedData"]
+        var nestedRoots = Set<String>()
+
+        for case let url as URL in enumerator {
+            let depth = url.pathComponents.count - baseDepth
+            if depth > maxDepth {
+                enumerator.skipDescendants()
+                continue
+            }
+
+            let name = url.lastPathComponent
+            if ignoredDirectories.contains(name) {
+                enumerator.skipDescendants()
+                continue
+            }
+
+            if name == ".git" {
+                nestedRoots.insert(url.deletingLastPathComponent().path)
+                enumerator.skipDescendants()
+            }
+        }
+
+        return Array(nestedRoots)
+    }
+
+    private static func isGitRepository(at path: String, using fileManager: FileManager) -> Bool {
+        let gitPath = (path as NSString).appendingPathComponent(".git")
+        return fileManager.fileExists(atPath: gitPath)
     }
 
     /// Query Terminal.app and iTerm2 for their tab working directories via AppleScript
