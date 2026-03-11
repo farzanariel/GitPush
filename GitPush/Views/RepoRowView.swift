@@ -17,188 +17,303 @@ struct RepoRowView: View {
         VStack(spacing: 0) {
             mainRow
             expandedContent
-            if case .error(let msg) = repo.operation { errorBanner(msg) }
+
+            if case .error(let msg) = repo.operation {
+                errorBanner(msg)
+            }
         }
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(isHovered ? Color(nsColor: .controlAccentColor).opacity(0.06) : .clear)
+        .background(cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.white.opacity(isHovered ? 0.18 : 0.11), lineWidth: 1)
         )
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .onHover { isHovered = $0 }
-        .animation(.easeOut(duration: 0.12), value: isHovered)
-        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: repo.operation)
+        .animation(.easeOut(duration: 0.16), value: isHovered)
+        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: isExpanded)
+        .animation(.spring(response: 0.28, dampingFraction: 0.85), value: repo.operation)
+    }
+
+    private var expandedContent: some View {
+        ExpandableReveal(isExpanded: isExpanded) {
+            VStack(spacing: 0) {
+                Divider()
+                    .padding(.horizontal, 11)
+
+                expandedContentBody
+            }
+        }
+    }
+
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(.regularMaterial)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.white.opacity(isHovered ? 0.08 : 0.03))
+            )
+            .shadow(color: Color.black.opacity(isHovered ? 0.12 : 0.07), radius: isHovered ? 14 : 10, y: 6)
     }
 
     private var mainRow: some View {
-        HStack(spacing: 8) {
-            // Tappable area for expand/collapse
-            HStack(spacing: 8) {
-                statusDot
-                    .frame(width: 18, height: 18)
+        HStack(alignment: .top, spacing: 10) {
+            statusBadge
 
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 5) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(repo.name)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.system(size: 13.5, weight: .semibold))
                             .lineLimit(1)
 
-                        Text(repo.branch)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(Color(nsColor: .separatorColor).opacity(0.3))
-                            .cornerRadius(3)
+                        Text(repo.path)
+                            .font(.system(size: 9.5, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                     }
 
-                    HStack(spacing: 4) {
-                        if repo.changedFileCount > 0 {
-                            Text("\(repo.changedFileCount) change\(repo.changedFileCount == 1 ? "" : "s")")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                        if repo.unpushedCount > 0 {
-                            Text("\(repo.unpushedCount) unpushed")
-                                .font(.caption2)
-                                .foregroundStyle(.blue.opacity(0.7))
-                        }
-                    }
+                    Spacer(minLength: 8)
+
+                    branchChip
                 }
 
-                Spacer()
+                HStack(spacing: 5) {
+                    metadataChip(
+                        text: "\(repo.changedFileCount) change\(repo.changedFileCount == 1 ? "" : "s")",
+                        systemName: "circle.hexagongrid.fill",
+                        tint: .orange,
+                        isVisible: repo.changedFileCount > 0
+                    )
+
+                    metadataChip(
+                        text: "\(repo.unpushedCount) unpushed",
+                        systemName: "arrow.up.forward.circle.fill",
+                        tint: .blue,
+                        isVisible: repo.unpushedCount > 0
+                    )
+
+                    Spacer(minLength: 0)
+                }
             }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                withAnimation(.spring(response: 0.26, dampingFraction: 0.9)) {
-                    isExpanded.toggle()
-                }
-            }
 
-            // Quick action buttons
-            if !repo.operation.isInProgress {
-                if repo.changedFileCount > 0 {
-                    Button {
-                        Task { await quickCommit() }
-                    } label: {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 16))
-                            .symbolRenderingMode(.hierarchical)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.green)
-                    .opacity(isHovered ? 1 : 0.7)
-                    .help("Commit")
-                }
-
-                if repo.changedFileCount > 0 || repo.unpushedCount > 0 {
-                    Button {
-                        if repo.changedFileCount > 0 {
-                            Task { await quickCommitAndPush() }
-                        } else {
-                            Task { await pushOnly() }
-                        }
-                    } label: {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 16))
-                            .symbolRenderingMode(.hierarchical)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Color.accentColor)
-                    .opacity(isHovered ? 1 : 0.7)
-                    .help(repo.changedFileCount > 0 ? "Commit & Push" : "Push")
-                }
+            actionButtons
+        }
+        .padding(11)
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .onTapGesture {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.84)) {
+                isExpanded.toggle()
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+    }
+
+    private var statusBadge: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(statusBackgroundColor)
+
+            statusSymbol
+        }
+        .frame(width: 28, height: 28)
+    }
+
+    private var statusBackgroundColor: Color {
+        switch repo.operation {
+        case .idle:
+            if repo.changedFileCount > 0 { return .orange.opacity(0.16) }
+            if repo.unpushedCount > 0 { return .blue.opacity(0.16) }
+            return Color.primary.opacity(0.06)
+        case .committing:
+            return .orange.opacity(0.16)
+        case .pushing:
+            return .blue.opacity(0.16)
+        case .success:
+            return .green.opacity(0.16)
+        case .error:
+            return .red.opacity(0.16)
+        }
     }
 
     @ViewBuilder
-    private var statusDot: some View {
+    private var statusSymbol: some View {
         switch repo.operation {
         case .idle:
-            Circle()
-                .fill(repo.changedFileCount > 0 ? Color.orange : (repo.unpushedCount > 0 ? Color.blue : Color(nsColor: .separatorColor)))
-                .frame(width: 6, height: 6)
+            Image(systemName: repo.changedFileCount > 0 ? "point.topleft.down.curvedto.point.bottomright.up.fill" : "arrow.up.forward.circle.fill")
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(repo.changedFileCount > 0 ? .orange : .blue)
         case .committing:
             CommittingIndicator()
         case .pushing:
             PushingIndicator()
         case .success:
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 14))
+            Image(systemName: "checkmark")
+                .font(.system(size: 11.5, weight: .bold))
                 .foregroundStyle(.green)
-                .transition(.scale.combined(with: .opacity))
         case .error:
-            Image(systemName: "xmark.circle.fill")
-                .font(.system(size: 14))
+            Image(systemName: "exclamationmark")
+                .font(.system(size: 11.5, weight: .bold))
                 .foregroundStyle(.red)
-                .transition(.scale.combined(with: .opacity))
         }
     }
 
-    private var expandedContent: some View {
-        ExpandableReveal(isExpanded: isExpanded) {
-            expandedContentBody
+    private var branchChip: some View {
+        Text(repo.branch)
+            .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.primary.opacity(0.06))
+            )
+    }
+
+    @ViewBuilder
+    private func metadataChip(text: String, systemName: String, tint: Color, isVisible: Bool) -> some View {
+        if isVisible {
+            Label(text, systemImage: systemName)
+                .font(.system(size: 9.5, weight: .medium))
+                .foregroundStyle(tint.opacity(0.92))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(tint.opacity(0.12))
+                )
         }
+    }
+
+    @ViewBuilder
+    private var actionButtons: some View {
+        HStack(spacing: 6) {
+            if !repo.operation.isInProgress, repo.changedFileCount > 0 {
+                circleActionButton(
+                    systemName: "checkmark",
+                    tint: .green,
+                    help: "Commit"
+                ) {
+                    Task { await quickCommit() }
+                }
+            }
+
+            if !repo.operation.isInProgress, repo.changedFileCount > 0 || repo.unpushedCount > 0 {
+                circleActionButton(
+                    systemName: "arrow.up",
+                    tint: .accentColor,
+                    help: repo.changedFileCount > 0 ? "Commit & Push" : "Push"
+                ) {
+                    if repo.changedFileCount > 0 {
+                        Task { await quickCommitAndPush() }
+                    } else {
+                        Task { await pushOnly() }
+                    }
+                }
+            }
+        }
+    }
+
+    private func circleActionButton(
+        systemName: String,
+        tint: Color,
+        help: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(tint)
+                .frame(width: 24, height: 24)
+                .background(
+                    Circle()
+                        .fill(tint.opacity(0.12))
+                )
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 
     private var expandedContentBody: some View {
-        VStack(spacing: 6) {
-            // File list
-            VStack(spacing: 0) {
-                ForEach(repo.changedFiles.prefix(8)) { file in
-                    HStack(spacing: 5) {
-                        Text(file.status)
-                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(statusColor(file.status))
-                            .frame(width: 16, alignment: .center)
+        VStack(spacing: 10) {
+            if !repo.changedFiles.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Changed Files")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
 
-                        Text(file.path)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                    VStack(spacing: 6) {
+                        ForEach(repo.changedFiles.prefix(8)) { file in
+                            HStack(spacing: 6) {
+                                Text(file.status)
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(statusColor(file.status))
+                                    .frame(width: 18)
 
-                        Spacer()
+                                VStack(alignment: .leading, spacing: 0) {
+                                    Text(file.path)
+                                        .font(.system(size: 10.5, design: .monospaced))
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+
+                                    Text(file.statusLabel)
+                                        .font(.system(size: 9.5))
+                                        .foregroundStyle(.tertiary)
+                                }
+
+                                Spacer(minLength: 0)
+                            }
+                        }
+
+                        if repo.changedFiles.count > 8 {
+                            Text("and \(repo.changedFiles.count - 8) more")
+                                .font(.system(size: 9.5, weight: .medium))
+                                .foregroundStyle(.tertiary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
-                    .padding(.vertical, 1.5)
                 }
-                if repo.changedFiles.count > 8 {
-                    Text("and \(repo.changedFiles.count - 8) more")
-                        .font(.caption2)
-                        .foregroundStyle(.quaternary)
-                        .padding(.top, 2)
-                }
+                .padding(10)
+                .background(
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .fill(Color.primary.opacity(0.045))
+                )
             }
-            .padding(8)
-            .background(Color(nsColor: .textBackgroundColor).opacity(0.5))
-            .cornerRadius(5)
 
-            // Commit message
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text("Message")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                    Text("Commit Message")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+
                     Spacer()
+
                     Button {
                         generateMessage()
                     } label: {
-                        HStack(spacing: 2) {
+                        HStack(spacing: 4) {
                             if isGeneratingMessage {
                                 ProgressView()
-                                    .controlSize(.mini)
-                                    .scaleEffect(0.6)
+                                    .controlSize(.small)
+                                    .scaleEffect(0.65)
                             } else {
                                 Image(systemName: appState.hasAPIKey ? "sparkles" : "text.badge.star")
-                                    .font(.system(size: 9))
+                                    .font(.system(size: 9, weight: .semibold))
                             }
+
                             Text(appState.hasAPIKey ? "Generate" : "Auto")
-                                .font(.caption2)
+                                .font(.system(size: 10.5, weight: .semibold))
                         }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill((appState.hasAPIKey ? Color.accentColor : Color.secondary).opacity(0.12))
+                        )
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(appState.hasAPIKey ? Color.purple : Color.secondary)
                     .disabled(isGeneratingMessage)
                 }
 
@@ -208,66 +323,69 @@ struct RepoRowView: View {
                             .font(.system(size: 11, design: .monospaced))
                             .scrollDisabled(true)
                     }
-                    .frame(minHeight: 50, maxHeight: 120)
-                    .padding(2)
-                    .background(Color(nsColor: .textBackgroundColor))
-                    .cornerRadius(4)
+                    .frame(minHeight: 58, maxHeight: 104)
+                    .padding(3)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color(nsColor: .textBackgroundColor).opacity(0.85))
+                    )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
                     )
                 }
             }
 
-            // Action buttons
-            HStack {
+            HStack(spacing: 6) {
                 Spacer()
-                if repo.changedFileCount > 0 {
-                    Button {
-                        Task { await manualCommit() }
-                    } label: {
-                        Text("Commit")
-                            .font(.system(size: 11, weight: .medium))
-                    }
-                    .controlSize(.small)
-                    .disabled(repo.operation.isInProgress)
 
-                    Button {
+                if repo.changedFileCount > 0 {
+                    actionPill(title: "Commit", tint: .green) {
+                        Task { await manualCommit() }
+                    }
+
+                    actionPill(title: "Commit & Push", tint: .accentColor) {
                         Task { await manualCommitAndPush() }
-                    } label: {
-                        Text("Commit & Push")
-                            .font(.system(size: 11, weight: .medium))
                     }
-                    .controlSize(.small)
-                    .disabled(repo.operation.isInProgress)
                 } else if repo.unpushedCount > 0 {
-                    Button {
+                    actionPill(title: "Push", tint: .accentColor) {
                         Task { await pushOnly() }
-                    } label: {
-                        Text("Push")
-                            .font(.system(size: 11, weight: .medium))
                     }
-                    .controlSize(.small)
-                    .disabled(repo.operation.isInProgress)
                 }
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.bottom, 8)
+        .padding(.horizontal, 11)
+        .padding(.top, 10)
+        .padding(.bottom, 11)
+    }
+
+    private func actionPill(title: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 10.5, weight: .semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(tint.opacity(0.14))
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(repo.operation.isInProgress)
     }
 
     private func errorBanner(_ message: String) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 9))
+                .font(.system(size: 10))
             Text(message)
-                .font(.caption2)
+                .font(.system(size: 10.5, weight: .medium))
                 .lineLimit(2)
         }
         .foregroundStyle(.red)
-        .padding(.horizontal, 10)
-        .padding(.bottom, 6)
-        .transition(.opacity)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 11)
+        .padding(.bottom, 11)
     }
 
     private func statusColor(_ status: String) -> Color {
@@ -289,26 +407,22 @@ struct RepoRowView: View {
         }
     }
 
-    /// Green checkmark: commit only (generate message if empty)
     private func quickCommit() async {
         let hasMessage = appState.repositories.first(where: { $0.id == repo.id })
             .map { !$0.commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
         await appState.commitOnly(repo: repo, autoGenerate: !hasMessage)
     }
 
-    /// Blue arrow: commit & push (generate message if empty)
     private func quickCommitAndPush() async {
         let hasMessage = appState.repositories.first(where: { $0.id == repo.id })
             .map { !$0.commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
         await appState.commitAndPush(repo: repo, autoGenerate: !hasMessage)
     }
 
-    /// Push only (no commit) — for repos with unpushed commits
     private func pushOnly() async {
         await appState.pushOnly(repo: repo)
     }
 
-    /// Expanded "Commit" button: use whatever message is in the field
     private func manualCommit() async {
         if let index = appState.repositories.firstIndex(where: { $0.id == repo.id }),
            appState.repositories[index].commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -317,7 +431,6 @@ struct RepoRowView: View {
         await appState.commitOnly(repo: repo)
     }
 
-    /// Expanded "Commit & Push" button: use whatever message is in the field
     private func manualCommitAndPush() async {
         if let index = appState.repositories.firstIndex(where: { $0.id == repo.id }),
            appState.repositories[index].commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -327,16 +440,14 @@ struct RepoRowView: View {
     }
 }
 
-// MARK: - Status Animations
-
 struct CommittingIndicator: View {
     @State private var rotation: Double = 0
 
     var body: some View {
         Circle()
-            .trim(from: 0, to: 0.65)
-            .stroke(Color.orange, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-            .frame(width: 12, height: 12)
+            .trim(from: 0.08, to: 0.76)
+            .stroke(Color.orange, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+            .frame(width: 13, height: 13)
             .rotationEffect(.degrees(rotation))
             .onAppear {
                 withAnimation(.linear(duration: 0.8).repeatForever(autoreverses: false)) {
@@ -348,18 +459,18 @@ struct CommittingIndicator: View {
 
 struct PushingIndicator: View {
     @State private var offset: CGFloat = 3
-    @State private var opacity: Double = 0.4
+    @State private var opacity: Double = 0.45
 
     var body: some View {
         Image(systemName: "arrow.up")
-            .font(.system(size: 10, weight: .semibold))
+            .font(.system(size: 10.5, weight: .bold))
             .foregroundStyle(.blue)
             .offset(y: offset)
             .opacity(opacity)
             .onAppear {
-                withAnimation(.easeInOut(duration: 0.5).repeatForever()) {
+                withAnimation(.easeInOut(duration: 0.55).repeatForever()) {
                     offset = -3
-                    opacity = 1.0
+                    opacity = 1
                 }
             }
     }
@@ -413,7 +524,7 @@ private struct RepoRowPreviewHost: View {
             ],
             unpushedCount: 2,
             operation: .idle,
-            commitMessage: "Refine repo row expansion so the panel grows from the selected entry."
+            commitMessage: "Refine the menu bar UI to feel closer to current macOS utility panels."
         )
         state.repositories = [repo]
         _appState = StateObject(wrappedValue: state)
@@ -427,7 +538,7 @@ private struct RepoRowPreviewHost: View {
             initiallyExpanded: initiallyExpanded
         )
         .padding(12)
-        .frame(width: 320)
+        .frame(width: 368)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 }
