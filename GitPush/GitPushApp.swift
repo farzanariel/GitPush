@@ -64,13 +64,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setupStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem = item
 
         guard let button = item.button else { return }
         button.target = self
         button.action = #selector(togglePopover(_:))
         button.sendAction(on: [.leftMouseUp])
+        button.imageScaling = .scaleProportionallyUpOrDown
         updateStatusItem()
     }
 
@@ -103,36 +104,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateStatusItem() {
         guard let button = statusItem?.button else { return }
 
-        button.image = NSImage(
+        button.image = statusItemImage()
+        button.imagePosition = .imageOnly
+        button.title = ""
+        button.contentTintColor = nil
+        button.toolTip = appState.menuBarTooltip
+    }
+
+    private func statusItemImage() -> NSImage? {
+        let baseConfiguration = NSImage.SymbolConfiguration(pointSize: 12.5, weight: .semibold)
+        let whiteConfiguration = NSImage.SymbolConfiguration(hierarchicalColor: .white)
+        let configuration = baseConfiguration.applying(whiteConfiguration)
+
+        let image = NSImage(
             systemSymbolName: appState.menuBarIcon,
             accessibilityDescription: "GitPush"
-        )
-        button.imagePosition = appState.showsMenuBarCount ? .imageLeading : .imageOnly
-        button.title = statusItemTitle
-        button.contentTintColor = statusItemTintColor
-        button.toolTip = appState.menuBarLabel.isEmpty ? "GitPush" : appState.menuBarLabel
-    }
+        )?.withSymbolConfiguration(configuration)
 
-    private var statusItemTitle: String {
-        if appState.showsMenuBarCount, appState.dirtyRepoCount > 0 {
-            return "\(appState.dirtyRepoCount)"
-        }
-        return ""
-    }
-
-    private var statusItemTintColor: NSColor? {
-        switch appState.menuBarStatus {
-        case .idle:
-            return nil
-        case .committing:
-            return .systemOrange
-        case .pushing:
-            return .systemBlue
-        case .success:
-            return .systemGreen
-        case .error:
-            return .systemRed
-        }
+        image?.isTemplate = false
+        return image
     }
 
     private func updatePopoverSizeFromFittingSize() {

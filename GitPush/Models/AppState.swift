@@ -56,13 +56,6 @@ class AppState: ObservableObject {
         repositories.filter { $0.changedFileCount > 0 }.count
     }
 
-    var showsMenuBarCount: Bool {
-        if case .idle = menuBarStatus {
-            return true
-        }
-        return false
-    }
-
     var menuBarLabel: String {
         let dots = String(repeating: ".", count: (animationFrame % 3) + 1)
         switch menuBarStatus {
@@ -76,7 +69,8 @@ class AppState: ObservableObject {
 
     var menuBarIcon: String {
         switch menuBarStatus {
-        case .idle: return "arrow.up.circle"
+        case .idle:
+            return dirtyRepoCount > 0 ? "arrow.up.circle.fill" : "arrow.up.circle"
         case .committing:
             let frames = [
                 "point.topleft.down.curvedto.point.bottomright.up",
@@ -94,6 +88,16 @@ class AppState: ObservableObject {
         case .success: return "checkmark.circle.fill"
         case .error: return "exclamationmark.circle.fill"
         }
+    }
+
+    var menuBarTooltip: String {
+        if !menuBarLabel.isEmpty {
+            return menuBarLabel
+        }
+        if dirtyRepoCount > 0 {
+            return "\(dirtyRepoCount) repo\(dirtyRepoCount == 1 ? "" : "s") ready for commit or push"
+        }
+        return "GitPush"
     }
 
     func startAnimating() {
