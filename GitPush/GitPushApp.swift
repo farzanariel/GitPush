@@ -113,8 +113,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func statusItemImage() -> NSImage? {
         let baseConfiguration = NSImage.SymbolConfiguration(pointSize: 12.5, weight: .semibold)
-        let whiteConfiguration = NSImage.SymbolConfiguration(hierarchicalColor: .white)
-        let configuration = baseConfiguration.applying(whiteConfiguration)
+        let colorConfiguration = NSImage.SymbolConfiguration(
+            hierarchicalColor: statusItemColor.withAlphaComponent(appState.menuBarIconOpacity)
+        )
+        let configuration = baseConfiguration.applying(colorConfiguration)
 
         let image = NSImage(
             systemSymbolName: appState.menuBarIcon,
@@ -123,6 +125,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         image?.isTemplate = false
         return image
+    }
+
+    private var statusItemColor: NSColor {
+        switch appState.menuBarStatus {
+        case .success:
+            return .systemGreen
+        case .error:
+            return .systemRed
+        case .idle, .committing, .pushing:
+            return .white
+        }
     }
 
     private func updatePopoverSizeFromFittingSize() {

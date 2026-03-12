@@ -72,21 +72,25 @@ class AppState: ObservableObject {
         case .idle:
             return dirtyRepoCount > 0 ? "arrow.up.circle.fill" : "arrow.up.circle"
         case .committing:
-            let frames = [
-                "arrow.up.circle",
-                "arrow.up.circle.fill",
-                "arrow.up.circle"
-            ]
-            return frames[animationFrame % frames.count]
+            return "arrow.up.circle"
         case .pushing:
-            let frames = [
-                "arrow.up",
-                "arrow.up.circle",
-                "arrow.up.circle.fill"
-            ]
+            return "icloud.and.arrow.up"
+        case .success:
+            return "arrow.up.circle.fill"
+        case .error:
+            return "arrow.up.circle.fill"
+        }
+    }
+
+    var menuBarIconOpacity: Double {
+        switch menuBarStatus {
+        case .committing, .pushing:
+            let frames: [Double] = [0.72, 0.8, 0.88, 0.96, 1.0, 0.96, 0.88, 0.8]
             return frames[animationFrame % frames.count]
-        case .success: return "checkmark.circle.fill"
-        case .error: return "exclamationmark.circle.fill"
+        case .success, .error:
+            return 0.92
+        case .idle:
+            return dirtyRepoCount > 0 ? 0.96 : 0.84
         }
     }
 
@@ -103,7 +107,7 @@ class AppState: ObservableObject {
     func startAnimating() {
         animationTimer?.invalidate()
         animationFrame = 0
-        animationTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { [weak self] _ in
+        animationTimer = Timer.scheduledTimer(withTimeInterval: 0.16, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.animationFrame += 1
             }
