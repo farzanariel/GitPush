@@ -74,9 +74,8 @@ class AppState: ObservableObject {
         case .committing:
             let frames = [
                 "arrow.up.circle",
-                "arrow.up.circle.badge.clock",
                 "arrow.up.circle.fill",
-                "arrow.up.circle.badge.clock"
+                "arrow.up.circle"
             ]
             return frames[animationFrame % frames.count]
         case .pushing:
