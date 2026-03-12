@@ -73,9 +73,10 @@ class AppState: ObservableObject {
             return dirtyRepoCount > 0 ? "arrow.up.circle.fill" : "arrow.up.circle"
         case .committing:
             let frames = [
-                "point.topleft.down.curvedto.point.bottomright.up",
-                "point.topleft.down.curvedto.point.bottomright.up.fill",
-                "point.topleft.down.curvedto.point.bottomright.up"
+                "arrow.up.circle",
+                "arrow.up.circle.badge.clock",
+                "arrow.up.circle.fill",
+                "arrow.up.circle.badge.clock"
             ]
             return frames[animationFrame % frames.count]
         case .pushing:
