@@ -389,7 +389,13 @@ struct SettingsView: View {
                     }
                 }
 
-                settingsCard(title: "AI Commit Messages", subtitle: modelLabel) {
+                settingsCard(
+                    title: "AI Commit Messages",
+                    subtitle: modelLabel,
+                    headerTrailing: AnyView(
+                        headerToggle(isOn: $appState.autoGenerateCommitMessage)
+                    )
+                ) {
                     VStack(spacing: 10) {
                         Picker("Provider", selection: Binding(
                             get: { appState.aiProvider },
@@ -405,7 +411,7 @@ struct SettingsView: View {
                         }
                         .pickerStyle(.segmented)
 
-                        if hasExistingKey && apiKeyInput.isEmpty {
+                        if hasExistingKey {
                             HStack {
                                 Label("Saved in Keychain", systemImage: "key.fill")
                                     .font(.system(size: 10.5, weight: .medium))
@@ -426,63 +432,62 @@ struct SettingsView: View {
                                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                                     .fill(Color.primary.opacity(0.04))
                             )
-                        }
-
-                        HStack(spacing: 6) {
-                            SecureField(apiKeyPlaceholder, text: $apiKeyInput)
-                                .font(.system(size: 11.5, design: .monospaced))
-                                .textFieldStyle(.plain)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 8)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .fill(Color(nsColor: .textBackgroundColor).opacity(0.82))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-                                )
-                                .onChange(of: apiKeyInput) { _, _ in
-                                    keySaveState = .idle
-                                }
-                                .onSubmit { saveKey() }
-
-                            Button {
-                                saveKey()
-                            } label: {
-                                Group {
-                                    if keySaveState == .saved {
-                                        Image(systemName: "checkmark")
-                                            .font(.system(size: 11, weight: .bold))
-                                            .foregroundStyle(.green)
-                                    } else {
-                                        Text("Save")
-                                            .font(.system(size: 11.5, weight: .semibold))
+                        } else {
+                            HStack(spacing: 6) {
+                                SecureField(apiKeyPlaceholder, text: $apiKeyInput)
+                                    .font(.system(size: 11.5, design: .monospaced))
+                                    .textFieldStyle(.plain)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .fill(Color(nsColor: .textBackgroundColor).opacity(0.82))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                                    )
+                                    .onChange(of: apiKeyInput) { _, _ in
+                                        keySaveState = .idle
                                     }
+                                    .onSubmit { saveKey() }
+
+                                Button {
+                                    saveKey()
+                                } label: {
+                                    Group {
+                                        if keySaveState == .saved {
+                                            Image(systemName: "checkmark")
+                                                .font(.system(size: 11, weight: .bold))
+                                                .foregroundStyle(.green)
+                                        } else {
+                                            Text("Save")
+                                                .font(.system(size: 11.5, weight: .semibold))
+                                        }
+                                    }
+                                    .frame(width: 46)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .fill(Color.accentColor.opacity(apiKeyInput.isEmpty ? 0.08 : 0.14))
+                                    )
                                 }
-                                .frame(width: 46)
-                                .padding(.vertical, 8)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .fill(Color.accentColor.opacity(apiKeyInput.isEmpty ? 0.08 : 0.14))
-                                )
+                                .buttonStyle(.plain)
+                                .disabled(apiKeyInput.isEmpty)
                             }
-                            .buttonStyle(.plain)
-                            .disabled(apiKeyInput.isEmpty)
                         }
 
-                        Toggle("Auto-generate commit messages when opening a repo", isOn: $appState.autoGenerateCommitMessage)
-                            .toggleStyle(.switch)
-                            .font(.system(size: 11.5))
                     }
                 }
 
-                settingsCard(title: "Keyboard Shortcut", subtitle: "Commit and push all active repos from anywhere.") {
+                settingsCard(
+                    title: "Keyboard Shortcut",
+                    subtitle: "Commit and push all active repos from anywhere.",
+                    headerTrailing: AnyView(
+                        headerToggle(isOn: $appState.hotkeyEnabled)
+                    )
+                ) {
                     VStack(alignment: .leading, spacing: 10) {
-                        Toggle("Enable global shortcut", isOn: $appState.hotkeyEnabled)
-                            .toggleStyle(.switch)
-                            .font(.system(size: 11.5))
-
                         if appState.hotkeyEnabled {
                             HStack {
                                 Text("Shortcut")
@@ -519,22 +524,38 @@ struct SettingsView: View {
     private func settingsCard<Content: View>(
         title: String,
         subtitle: String,
+        headerTrailing: AnyView? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 10) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title)
-                        .font(.system(size: 13.5, weight: .semibold))
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(title)
+                            .font(.system(size: 13.5, weight: .semibold))
 
-                    Text(subtitle)
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(.secondary)
+                        Text(subtitle)
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    if let headerTrailing {
+                        headerTrailing
+                    }
                 }
 
                 content()
             }
         }
+    }
+
+    private func headerToggle(isOn: Binding<Bool>) -> some View {
+        Toggle("", isOn: isOn)
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .controlSize(.small)
     }
 
     private func chooseFolder() {
