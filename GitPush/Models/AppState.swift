@@ -22,6 +22,8 @@ class AppState: ObservableObject {
     @AppStorage("hotkeyKeyCode") var hotkeyKeyCode: Int = -1  // -1 = not set
     @AppStorage("hotkeyModifiers") var hotkeyModifiers: Int = 0
     @AppStorage("autoGenerateCommitMessage") var autoGenerateCommitMessage: Bool = true
+    @AppStorage("gitPushAttributionEnabled") var gitPushAttributionEnabled: Bool = true
+    @AppStorage("gitPushAttributionEmail") var gitPushAttributionEmail: String = "noreply@gitpush.dev"
 
     private var animationTimer: Timer?
     private var scanTimer: Timer?
@@ -186,7 +188,12 @@ class AppState: ObservableObject {
             message = "update \(DateFormatter.shortDateTime.string(from: Date()))"
         }
 
-        let commitResult = await GitService.commit(at: repo.path, message: message)
+        let commitResult = await GitService.commit(
+            at: repo.path,
+            message: message,
+            attributeGitPush: gitPushAttributionEnabled,
+            gitPushAttributionEmail: gitPushAttributionEmail
+        )
         guard let idx = repoIndex(repo.id) else { return }
         switch commitResult {
         case .failure(let error):
@@ -225,7 +232,12 @@ class AppState: ObservableObject {
             message = "update \(DateFormatter.shortDateTime.string(from: Date()))"
         }
 
-        let commitResult = await GitService.commit(at: repo.path, message: message)
+        let commitResult = await GitService.commit(
+            at: repo.path,
+            message: message,
+            attributeGitPush: gitPushAttributionEnabled,
+            gitPushAttributionEmail: gitPushAttributionEmail
+        )
         guard let idx = repoIndex(repo.id) else { return }
         switch commitResult {
         case .failure(let error):

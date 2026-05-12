@@ -5,6 +5,8 @@ struct GitError: Error {
 }
 
 actor GitService {
+    private static let gitPushCoAuthorName = "GitPush"
+
     // Processes we consider "active work" — only matched against cwd
     private static let activeProcesses: Set<String> = [
         // Editors & IDEs
@@ -310,17 +312,35 @@ actor GitService {
         return result
     }
 
-    static func commit(at path: String, message: String) async -> Result<Void, GitError> {
+    static func commit(
+        at path: String,
+        message: String,
+        attributeGitPush: Bool = true,
+        gitPushAttributionEmail: String = "noreply@gitpush.dev"
+    ) async -> Result<Void, GitError> {
         let addOutput = await run("git", args: ["-C", path, "add", "-A"], includeStderr: true)
         if addOutput.contains("fatal:") {
             return .failure(GitError(message: "Failed to stage: \(addOutput)"))
         }
 
-        let output = await run("git", args: ["-C", path, "commit", "-m", message], includeStderr: true)
+        let commitMessage = attributeGitPush ? messageWithGitPushCoAuthor(message, email: gitPushAttributionEmail) : message
+        let output = await run("git", args: ["-C", path, "commit", "-m", commitMessage], includeStderr: true)
         if output.contains("fatal:") || output.contains("error:") {
             return .failure(GitError(message: output.trimmingCharacters(in: .whitespacesAndNewlines)))
         }
         return .success(())
+    }
+
+    private static func messageWithGitPushCoAuthor(_ message: String, email: String) -> String {
+        let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        let gitPushCoAuthorTrailer = "Co-authored-by: \(gitPushCoAuthorName) <\(trimmedEmail)>"
+        let alreadyAttributed = trimmedMessage
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .contains { $0.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(gitPushCoAuthorTrailer) == .orderedSame }
+
+        guard !trimmedEmail.isEmpty, !alreadyAttributed else { return trimmedMessage }
+        return "\(trimmedMessage)\n\n\(gitPushCoAuthorTrailer)"
     }
 
     static func push(at path: String) async -> Result<Void, GitError> {

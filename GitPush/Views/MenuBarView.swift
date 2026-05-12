@@ -481,6 +481,34 @@ struct SettingsView: View {
                 }
 
                 settingsCard(
+                    title: "GitHub Attribution",
+                    subtitle: "Show GitPush as a co-author on commits.",
+                    headerTrailing: AnyView(
+                        headerToggle(isOn: $appState.gitPushAttributionEnabled)
+                    )
+                ) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        TextField("GitHub no-reply email", text: $appState.gitPushAttributionEmail)
+                            .font(.system(size: 11.5, design: .monospaced))
+                            .textFieldStyle(.plain)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Color(nsColor: .textBackgroundColor).opacity(0.82))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                            )
+
+                        Text("Use an email attached to the GitHub account or app that should appear as GitPush.")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                settingsCard(
                     title: "Keyboard Shortcut",
                     subtitle: "Commit and push all active repos from anywhere.",
                     headerTrailing: AnyView(
