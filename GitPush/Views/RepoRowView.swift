@@ -71,7 +71,7 @@ struct RepoRowView: View {
                             .font(.system(size: 13.5, weight: .semibold))
                             .lineLimit(1)
 
-                        Text(repo.path)
+                        Text(repo.displayPath)
                             .font(.system(size: 9.5, design: .monospaced))
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)

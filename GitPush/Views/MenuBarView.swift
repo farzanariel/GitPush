@@ -341,10 +341,19 @@ struct SettingsView: View {
     @State private var apiKeyInput = ""
     @State private var keySaveState: KeySaveState = .idle
     @State private var hasExistingKey = false
+    @State private var remoteRootsInput = ""
+    @State private var remoteSaveState: RemoteSaveState = .idle
 
     enum KeySaveState: Equatable {
         case idle
         case saved
+    }
+
+    enum RemoteSaveState: Equatable {
+        case idle
+        case unsaved
+        case invalid
+        case saved(count: Int)
     }
 
     private var apiKeyPlaceholder: String {
@@ -386,6 +395,60 @@ struct SettingsView: View {
                             chooseFolder()
                         }
                         .controlSize(.small)
+                    }
+                }
+
+                settingsCard(title: "Remote Hosts", subtitle: "SSH project roots to scan for repos with pending work.") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        TextEditor(text: $remoteRootsInput)
+                            .font(.system(size: 11.5, design: .monospaced))
+                            .scrollContentBackground(.hidden)
+                            .frame(minHeight: 58, maxHeight: 86)
+                            .padding(6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Color(nsColor: .textBackgroundColor).opacity(0.82))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                            )
+                            .onChange(of: remoteRootsInput) { _, _ in
+                                remoteSaveState = remoteRootsAreValid ? .unsaved : .invalid
+                            }
+
+                        HStack(spacing: 6) {
+                            Label("user@host:/home/user/projects", systemImage: "terminal.fill")
+                                .font(.system(size: 10.5, weight: .medium))
+                                .foregroundStyle(.secondary)
+
+                            Spacer(minLength: 8)
+
+                            remoteSaveStatus
+
+                            Button {
+                                saveRemoteRoots()
+                            } label: {
+                                Group {
+                                    if case .saved = remoteSaveState {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundStyle(.green)
+                                    } else {
+                                        Text("Save")
+                                            .font(.system(size: 11.5, weight: .semibold))
+                                    }
+                                }
+                                .frame(width: 46)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(Color.accentColor.opacity(canSaveRemoteRoots ? 0.14 : 0.08))
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!canSaveRemoteRoots)
+                        }
                     }
                 }
 
@@ -541,12 +604,14 @@ struct SettingsView: View {
         }
         .onAppear {
             loadKeyForCurrentProvider()
+            loadRemoteRoots()
         }
         .onDisappear {
             appState.scanRepos()
         }
         .animation(.easeOut(duration: 0.2), value: keySaveState)
         .animation(.easeOut(duration: 0.2), value: hasExistingKey)
+        .animation(.easeOut(duration: 0.2), value: remoteSaveState)
     }
 
     private func settingsCard<Content: View>(
@@ -622,6 +687,67 @@ struct SettingsView: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             keySaveState = .idle
+        }
+    }
+
+    @ViewBuilder
+    private var remoteSaveStatus: some View {
+        switch remoteSaveState {
+        case .idle:
+            if !appState.remoteProjectRoots.isEmpty {
+                Text("\(appState.remoteProjectRoots.count) saved")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+        case .unsaved:
+            Text("Unsaved")
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(.orange)
+        case .invalid:
+            Text("Invalid format")
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(.red)
+        case .saved(let count):
+            Text(count == 0 ? "Saved empty" : "Saved \(count)")
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(.green)
+        }
+    }
+
+    private var normalizedRemoteRootsInput: String {
+        remoteRootsInput
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+    }
+
+    private var remoteRootsAreValid: Bool {
+        let lines = normalizedRemoteRootsInput.split(separator: "\n").map(String.init)
+        return lines.allSatisfy { RemoteProjectRoot.parse($0) != nil }
+    }
+
+    private var canSaveRemoteRoots: Bool {
+        remoteRootsAreValid && normalizedRemoteRootsInput != appState.remoteProjectRootsText
+    }
+
+    private func loadRemoteRoots() {
+        remoteRootsInput = appState.remoteProjectRootsText
+        remoteSaveState = .idle
+    }
+
+    private func saveRemoteRoots() {
+        guard canSaveRemoteRoots else { return }
+        appState.remoteProjectRootsText = normalizedRemoteRootsInput
+        let count = appState.remoteProjectRoots.count
+        remoteRootsInput = appState.remoteProjectRootsText
+        remoteSaveState = .saved(count: count)
+        appState.scanRepos()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            if case .saved = remoteSaveState {
+                remoteSaveState = .idle
+            }
         }
     }
 }

@@ -19,12 +19,31 @@ struct Repository: Identifiable, Equatable {
     let id: String
     let path: String
     let name: String
+    var location: RepositoryLocation = .local
     var branch: String
     var changedFileCount: Int
     var changedFiles: [ChangedFile]
     var unpushedCount: Int = 0
     var operation: RepoOperation = .idle
     var commitMessage: String = ""
+
+    var displayPath: String {
+        switch location {
+        case .local:
+            return path
+        case .remote(let host):
+            return "\(host):\(path)"
+        }
+    }
+
+    var remoteHost: String? {
+        switch location {
+        case .local:
+            return nil
+        case .remote(let host):
+            return host
+        }
+    }
 
     struct ChangedFile: Identifiable, Equatable {
         let id = UUID()
@@ -51,5 +70,42 @@ struct Repository: Identifiable, Equatable {
             default: return "secondary"
             }
         }
+    }
+}
+
+enum RepositoryLocation: Equatable {
+    case local
+    case remote(host: String)
+}
+
+struct RemoteProjectRoot: Identifiable, Equatable {
+    let host: String
+    let path: String
+
+    var id: String { "\(host):\(path)" }
+    var displayValue: String { id }
+
+    static func parseLines(_ text: String) -> [RemoteProjectRoot] {
+        text
+            .split(separator: "\n")
+            .compactMap { parse(String($0)) }
+    }
+
+    static func parse(_ value: String) -> RemoteProjectRoot? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let separator = trimmed.firstIndex(of: ":") else {
+            return nil
+        }
+
+        let host = String(trimmed[..<separator]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let pathStart = trimmed.index(after: separator)
+        let path = String(trimmed[pathStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !host.isEmpty, path.hasPrefix("/") || path.hasPrefix("~") else {
+            return nil
+        }
+
+        return RemoteProjectRoot(host: host, path: path)
     }
 }

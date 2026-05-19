@@ -24,6 +24,7 @@ class AppState: ObservableObject {
     @AppStorage("autoGenerateCommitMessage") var autoGenerateCommitMessage: Bool = true
     @AppStorage("gitPushAttributionEnabled") var gitPushAttributionEnabled: Bool = true
     @AppStorage("gitPushAttributionEmail") var gitPushAttributionEmail: String = "noreply@gitpush.dev"
+    @AppStorage("remoteProjectRoots") var remoteProjectRootsText: String = ""
 
     private var animationTimer: Timer?
     private var scanTimer: Timer?
@@ -52,6 +53,10 @@ class AppState: ObservableObject {
 
     var expandedProjectsPath: String {
         (projectsPath as NSString).expandingTildeInPath
+    }
+
+    var remoteProjectRoots: [RemoteProjectRoot] {
+        RemoteProjectRoot.parseLines(remoteProjectRootsText)
     }
 
     var dirtyRepoCount: Int {
@@ -153,7 +158,23 @@ class AppState: ObservableObject {
         guard !repositories.contains(where: { $0.operation.isInProgress }) else { return }
 
         Task {
-            let scanned = await GitService.scanActiveRepositories(in: expandedProjectsPath)
+            async let localRepos = GitService.scanActiveRepositories(in: expandedProjectsPath)
+            let remoteRoots = remoteProjectRoots
+            let remoteRepos = await withTaskGroup(of: [Repository].self) { group in
+                for root in remoteRoots {
+                    group.addTask {
+                        await GitService.scanRemoteRepositories(in: root)
+                    }
+                }
+
+                var repos: [Repository] = []
+                for await scanned in group {
+                    repos.append(contentsOf: scanned)
+                }
+                return repos
+            }
+
+            let scanned = await localRepos + remoteRepos
             var updated = scanned
             for i in updated.indices {
                 if let existing = repositories.first(where: { $0.id == updated[i].id }) {
@@ -189,7 +210,7 @@ class AppState: ObservableObject {
         }
 
         let commitResult = await GitService.commit(
-            at: repo.path,
+            repo: repo,
             message: message,
             attributeGitPush: gitPushAttributionEnabled,
             gitPushAttributionEmail: gitPushAttributionEmail
@@ -233,7 +254,7 @@ class AppState: ObservableObject {
         }
 
         let commitResult = await GitService.commit(
-            at: repo.path,
+            repo: repo,
             message: message,
             attributeGitPush: gitPushAttributionEnabled,
             gitPushAttributionEmail: gitPushAttributionEmail
@@ -255,7 +276,7 @@ class AppState: ObservableObject {
         repositories[idx].operation = .pushing
         menuBarStatus = .pushing(repoName: repo.name)
 
-        let pushResult = await GitService.push(at: repo.path)
+        let pushResult = await GitService.push(repo: repo)
         guard let idx = repoIndex(repo.id) else { return }
         switch pushResult {
         case .failure(let error):
@@ -281,7 +302,7 @@ class AppState: ObservableObject {
         menuBarStatus = .pushing(repoName: repo.name)
         startAnimating()
 
-        let pushResult = await GitService.push(at: repo.path)
+        let pushResult = await GitService.push(repo: repo)
         guard let idx = repoIndex(repo.id) else { return }
         switch pushResult {
         case .failure(let error):
@@ -323,7 +344,7 @@ class AppState: ObservableObject {
             return
         }
 
-        let diff = await GitService.diff(at: repo.path)
+        let diff = await GitService.diff(for: repo)
         guard !diff.isEmpty else {
             debugLog("generateCommitMessage: diff is EMPTY for \(repo.name)")
             if let idx = repoIndex(repo.id) {

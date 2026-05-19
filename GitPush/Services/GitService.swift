@@ -105,6 +105,57 @@ actor GitService {
         return repos.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
+    static func scanRemoteRepositories(in root: RemoteProjectRoot) async -> [Repository] {
+        let quotedRoot = shellPathQuote(root.path)
+        let output = await runSSH(
+            host: root.host,
+            command: "find \(quotedRoot) -maxdepth 3 -type d -name .git -prune -print 2>/dev/null",
+            includeStderr: true
+        )
+
+        let repoPaths = Set(output
+            .split(separator: "\n")
+            .map { String($0) }
+            .filter { $0.hasSuffix("/.git") }
+            .map { String($0.dropLast(5)) }
+        )
+
+        let repos = await withTaskGroup(of: Repository?.self) { group in
+            for repoPath in repoPaths {
+                group.addTask {
+                    let (branch, changedFiles) = await getStatus(at: repoPath, location: .remote(host: root.host))
+                    let unpushed = await unpushedCount(at: repoPath, location: .remote(host: root.host))
+                    let name = (repoPath as NSString).lastPathComponent
+                    return Repository(
+                        id: "remote:\(root.host):\(repoPath)",
+                        path: repoPath,
+                        name: name,
+                        location: .remote(host: root.host),
+                        branch: branch,
+                        changedFileCount: changedFiles.count,
+                        changedFiles: changedFiles,
+                        unpushedCount: unpushed
+                    )
+                }
+            }
+
+            var results: [Repository] = []
+            for await repo in group {
+                if let repo = repo, repo.changedFileCount > 0 || repo.unpushedCount > 0 {
+                    results.append(repo)
+                }
+            }
+            return results
+        }
+
+        return repos.sorted {
+            if $0.remoteHost == $1.remoteHost {
+                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+            return ($0.remoteHost ?? "").localizedCaseInsensitiveCompare($1.remoteHost ?? "") == .orderedAscending
+        }
+    }
+
     private static func collectRepoRoots(
         from path: String,
         under projectsDirectory: String,
@@ -276,9 +327,13 @@ actor GitService {
     }
 
     static func getStatus(at path: String) async -> (branch: String, files: [Repository.ChangedFile]) {
-        let branch = await run("git", args: ["-C", path, "rev-parse", "--abbrev-ref", "HEAD"])
+        await getStatus(at: path, location: .local)
+    }
+
+    static func getStatus(at path: String, location: RepositoryLocation) async -> (branch: String, files: [Repository.ChangedFile]) {
+        let branch = await runGit(location: location, path: path, args: ["rev-parse", "--abbrev-ref", "HEAD"])
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let statusOutput = await run("git", args: ["-C", path, "status", "--porcelain"])
+        let statusOutput = await runGit(location: location, path: path, args: ["status", "--porcelain"])
 
         let files = statusOutput.split(separator: "\n").compactMap { line -> Repository.ChangedFile? in
             let str = String(line)
@@ -292,14 +347,26 @@ actor GitService {
     }
 
     static func unpushedCount(at path: String) async -> Int {
-        let output = await run("git", args: ["-C", path, "rev-list", "--count", "@{u}..HEAD"], includeStderr: true)
+        await unpushedCount(at: path, location: .local)
+    }
+
+    static func unpushedCount(at path: String, location: RepositoryLocation) async -> Int {
+        let output = await runGit(location: location, path: path, args: ["rev-list", "--count", "@{u}..HEAD"], includeStderr: true)
         return Int(output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
     }
 
     static func diff(at path: String) async -> String {
-        let staged = await run("git", args: ["-C", path, "diff", "--cached"])
-        let unstaged = await run("git", args: ["-C", path, "diff"])
-        let untracked = await run("git", args: ["-C", path, "ls-files", "--others", "--exclude-standard"])
+        await diff(at: path, location: .local)
+    }
+
+    static func diff(for repo: Repository) async -> String {
+        await diff(at: repo.path, location: repo.location)
+    }
+
+    static func diff(at path: String, location: RepositoryLocation) async -> String {
+        let staged = await runGit(location: location, path: path, args: ["diff", "--cached"])
+        let unstaged = await runGit(location: location, path: path, args: ["diff"])
+        let untracked = await runGit(location: location, path: path, args: ["ls-files", "--others", "--exclude-standard"])
 
         var result = ""
         if !staged.isEmpty { result += staged }
@@ -318,13 +385,44 @@ actor GitService {
         attributeGitPush: Bool = true,
         gitPushAttributionEmail: String = "noreply@gitpush.dev"
     ) async -> Result<Void, GitError> {
-        let addOutput = await run("git", args: ["-C", path, "add", "-A"], includeStderr: true)
+        await commit(
+            at: path,
+            location: .local,
+            message: message,
+            attributeGitPush: attributeGitPush,
+            gitPushAttributionEmail: gitPushAttributionEmail
+        )
+    }
+
+    static func commit(
+        repo: Repository,
+        message: String,
+        attributeGitPush: Bool = true,
+        gitPushAttributionEmail: String = "noreply@gitpush.dev"
+    ) async -> Result<Void, GitError> {
+        await commit(
+            at: repo.path,
+            location: repo.location,
+            message: message,
+            attributeGitPush: attributeGitPush,
+            gitPushAttributionEmail: gitPushAttributionEmail
+        )
+    }
+
+    static func commit(
+        at path: String,
+        location: RepositoryLocation,
+        message: String,
+        attributeGitPush: Bool = true,
+        gitPushAttributionEmail: String = "noreply@gitpush.dev"
+    ) async -> Result<Void, GitError> {
+        let addOutput = await runGit(location: location, path: path, args: ["add", "-A"], includeStderr: true)
         if addOutput.contains("fatal:") {
             return .failure(GitError(message: "Failed to stage: \(addOutput)"))
         }
 
         let commitMessage = attributeGitPush ? messageWithGitPushCoAuthor(message, email: gitPushAttributionEmail) : message
-        let output = await run("git", args: ["-C", path, "commit", "-m", commitMessage], includeStderr: true)
+        let output = await runGit(location: location, path: path, args: ["commit", "-m", commitMessage], includeStderr: true)
         if output.contains("fatal:") || output.contains("error:") {
             return .failure(GitError(message: output.trimmingCharacters(in: .whitespacesAndNewlines)))
         }
@@ -344,16 +442,63 @@ actor GitService {
     }
 
     static func push(at path: String) async -> Result<Void, GitError> {
-        let output = await run("git", args: ["-C", path, "push"], includeStderr: true)
+        await push(at: path, location: .local)
+    }
+
+    static func push(repo: Repository) async -> Result<Void, GitError> {
+        await push(at: repo.path, location: repo.location)
+    }
+
+    static func push(at path: String, location: RepositoryLocation) async -> Result<Void, GitError> {
+        let output = await runGit(location: location, path: path, args: ["push"], includeStderr: true)
         if output.contains("fatal:") || output.contains("error:") {
-            let branch = await run("git", args: ["-C", path, "rev-parse", "--abbrev-ref", "HEAD"])
+            let branch = await runGit(location: location, path: path, args: ["rev-parse", "--abbrev-ref", "HEAD"])
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            let retryOutput = await run("git", args: ["-C", path, "push", "-u", "origin", branch], includeStderr: true)
+            let retryOutput = await runGit(location: location, path: path, args: ["push", "-u", "origin", branch], includeStderr: true)
             if retryOutput.contains("fatal:") || retryOutput.contains("error:") {
                 return .failure(GitError(message: retryOutput.trimmingCharacters(in: .whitespacesAndNewlines)))
             }
         }
         return .success(())
+    }
+
+    private static func runGit(
+        location: RepositoryLocation,
+        path: String,
+        args: [String],
+        includeStderr: Bool = false
+    ) async -> String {
+        switch location {
+        case .local:
+            return await run("git", args: ["-C", path] + args, includeStderr: includeStderr)
+        case .remote(let host):
+            let command = (["git", "-C", shellPathQuote(path)] + args.map(shellQuote)).joined(separator: " ")
+            return await runSSH(host: host, command: command, includeStderr: includeStderr)
+        }
+    }
+
+    private static func runSSH(host: String, command: String, includeStderr: Bool = false) async -> String {
+        await run(
+            "ssh",
+            args: ["-o", "BatchMode=yes", "-o", "ConnectTimeout=4", host, command],
+            includeStderr: includeStderr
+        )
+    }
+
+    private static func shellQuote(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+    }
+
+    private static func shellPathQuote(_ value: String) -> String {
+        if value == "~" {
+            return "~"
+        }
+
+        if value.hasPrefix("~/") {
+            return "~/" + shellQuote(String(value.dropFirst(2)))
+        }
+
+        return shellQuote(value)
     }
 
     private static func run(_ command: String, args: [String], includeStderr: Bool = false) async -> String {
